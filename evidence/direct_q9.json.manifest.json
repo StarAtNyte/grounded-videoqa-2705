@@ -1,0 +1,30 @@
+{
+  "mode": "direct_vlm",
+  "model": "gemini-2.5-flash",
+  "split": "valid",
+  "video_id": "video_10016",
+  "question_id": "9",
+  "grounding": {
+    "frame": 0,
+    "box": [
+      0.083,
+      0.444,
+      0.182,
+      0.648
+    ]
+  },
+  "raw_response": "{\n  \"frame\": 0,\n  \"box\": [\n    0.083,\n    0.444,\n    0.182,\n    0.648\n  ]\n}",
+  "diagnostics": {
+    "mode": "direct_vlm",
+    "frame": 0,
+    "box": [
+      0.083,
+      0.444,
+      0.182,
+      0.648
+    ],
+    "fps": 29.89,
+    "tracking_stride": 30
+  },
+  "artifact_sha256": "bbf0882c187b648c0fcaaf3b75adbd07748a4ebbe7a48d0878a994c4adc278ac"
+}

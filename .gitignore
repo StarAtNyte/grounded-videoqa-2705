@@ -1,0 +1,16 @@
+# Dataset and generated artifacts
+/data/
+archives/
+*.zip
+*.mp4
+*.wav
+predictions/
+checkpoints/
+.cache/
+__pycache__/
+*.py[cod]
+__pycache__/
+.pi-glla/
+.pi-subagents/
+test_submission.json
+.env

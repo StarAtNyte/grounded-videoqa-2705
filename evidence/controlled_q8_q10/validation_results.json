@@ -1,0 +1,12 @@
+{
+  "method": "download from Modal Volume followed by official local validator",
+  "command": "python validate.py <artifact>",
+  "results": [
+    {"artifact":"baseline_q8.json","result":"OK","videos":1},
+    {"artifact":"baseline_q9.json","result":"OK","videos":1},
+    {"artifact":"baseline_q10.json","result":"OK","videos":1},
+    {"artifact":"proposal_q8.json","result":"OK","videos":1},
+    {"artifact":"proposal_q9.json","result":"OK","videos":1},
+    {"artifact":"proposal_q10.json","result":"OK","videos":1}
+  ]
+}
