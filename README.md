@@ -17,9 +17,14 @@ until made public.
 | Entry | Visibility | HOTA | Public rank | Verification |
 |---|---|---:|---:|---|
 | `StarAtNyte` reported EvalAI result | Public (reported) | **0.2120** | **1** | Submission ID/artifact identity still unconfirmed |
-| Project private submissions | Private | — | Not ranked | **0 confirmed** |
+| `StarAtNyte` submission `579655` | **Private** | Pending | Not ranked | Artifact SHA-256 recorded below |
 
-**Project submissions counted: 1 reported public + 0 confirmed private = 1.**
+**Project submissions counted: 1 reported public + 1 confirmed private = 2.**
+
+Private submission `579655` used phase 5350, `zero-shot`, contact
+`khanalnitij20@gmail.com`, and artifact `test_submission.json` with SHA-256
+`def19142c2ac8132d04e175cd2bf1085aecb86b194b7f16f98fbc5388be7b160`. It is
+not public and does not appear on the leaderboard.
 When a private EvalAI submission is created, add its submission ID, score, and
 artifact SHA-256 here; keep it in the count even if it is later made public.
 See `SUBMISSION_RESULT.md` for the evidence caveat and `AGENTS.md` for upload
