@@ -1,6 +1,6 @@
 # Molmo2-8B controlled experiment
 
-Implemented opt-in `predict_molmo2_sam2`: local Molmo2-8B consumes the video/question and emits frame-indexed point tracks; the earliest point initializes bidirectional SAM2 and official serialization. Existing CORTEX/reference/proposal modes are unchanged.
+Implemented opt-in `predict_molmo2_sam2`: pretrained `allenai/Molmo2-8B` consumes the video/question and emits frame-indexed point tracks; the selected object identity initializes bidirectional `facebook/sam2.1-hiera-large` tracking and official serialization. Existing CORTEX/reference/proposal modes are unchanged. All runs used pretrained inference only; no validation/test labels, manual annotations, or training data were used.
 
 Commands used for the controlled slice:
 
@@ -26,6 +26,8 @@ Artifacts `evidence/molmo2_q8.json`, `molmo2_q9.json`, and `molmo2_q10.json` pas
 The legacy `run_advanced` path had an undefined `tracking_stride`; it now defaults to 30 and imports its required `cv2` dependency without changing caller behavior. Modal regression smoke command `modal run modal_app.py::predict_advanced --split valid --video-id video_10016 --question-id 8 --output regression_smoke.json --backend sam2` completed and wrote an artifact (diagnostics reported zero candidates, but no runtime exception). Molmo2 manifests were downloaded to `evidence/molmo2_q8.json.manifest.json`, `molmo2_q9.json.manifest.json`, and `molmo2_q10.json.manifest.json`; each contains the raw response and parsed diagnostics. Validator outputs and hashes are preserved alongside the three artifacts.
 
 ## Parser/recovery rerun
+
+This corrected-parser candidate also used pretrained `allenai/Molmo2-8B` plus `facebook/sam2.1-hiera-large`, with no validation/test labels, manual annotations, or training data; only model-generated points and the question text were used.
 
 Exact corrected-parser commands (Modal workspace `baptinjean`):
 

@@ -1,6 +1,6 @@
 # Grounding/tracking fixes
 
-All runs used pretrained inference only on `video_10016`, valid Q8/Q9/Q10. No validation/test labels, manual annotations, or training data were used.
+All runs used pretrained inference only on `video_10016`, valid Q8/Q9/Q10: `allenai/Molmo-7B-O-0924` for spatial grounding, `IDEA-Research/grounding-dino-tiny` for proposals, and `facebook/sam2.1-hiera-large` for tracking. No validation/test labels, manual annotations, or training data were used.
 
 Exact fixed-proposal commands (Modal workspace `baptinjean`):
 
