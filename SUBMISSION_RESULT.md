@@ -18,7 +18,8 @@ If `StarAtNyte` is this project’s team, this test result exceeds the controlle
 - Contact: `khanalnitij20@gmail.com`
 - Artifact: `test_submission.json` (`932` videos / `1,859` questions)
 - SHA-256: `def19142c2ac8132d04e175cd2bf1085aecb86b194b7f16f98fbc5388be7b160`
-- Status: submitted; result pending
+- Status: evaluated
+- HOTA: `0.21201318502426147`
 
 This private submission was explicitly authorized as an experimental attempt. It
 is not a public leaderboard result and is not eligible for final competition
