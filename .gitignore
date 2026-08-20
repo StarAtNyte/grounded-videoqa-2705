@@ -13,4 +13,5 @@ __pycache__/
 .pi-glla/
 .pi-subagents/
 test_submission.json
+galaincha_rag/
 .env
