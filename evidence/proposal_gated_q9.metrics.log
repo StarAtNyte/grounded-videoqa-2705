@@ -1,0 +1,42 @@
+✓ Initialized. View run at 
+https://modal.com/apps/gpudashboard0/main/ap-9Wbq6QJVvNwd1zbTIdLJ33
+✓ Created objects.
+├── 🔨 Created mount 
+│   /home/nitiz/Projects/Self/Challenges/eval/2705-grounded-videoqa/modal_app.py
+├── 🔨 Created mount PythonPackage:gqa_core, PythonPackage:sam3_backend
+├── 🔨 Created mount PythonPackage:gqa_core, PythonPackage:gvqa_tracking, 
+│   PythonPackage:sam2_backend, PythonPackage:sam3_backend, 
+│   PythonPackage:gvqa_reasoning, PythonPackage:track_graph, 
+│   PythonPackage:advanced_models, PythonPackage:advanced_pipeline, 
+│   PythonPackage:local_eval, PythonPackage:validate
+├── 🔨 Created function prepare_sam2.
+├── 🔨 Created function predict_advanced.
+├── 🔨 Created function predict_cortex_sam2.
+├── 🔨 Created function export_controlled_artifact.
+├── 🔨 Created function download.
+├── 🔨 Created function extract_frame.
+├── 🔨 Created function inspect.
+├── 🔨 Created function reason.
+├── 🔨 Created function batch_reason.
+├── 🔨 Created function predict.
+├── 🔨 Created function predict_direct_sam2.
+├── 🔨 Created function predict_molmo2_sam2.
+├── 🔨 Created function batch_predict_molmo2_sam2.
+├── 🔨 Created function batch_predict.
+├── 🔨 Created function batch_predict_sam3.
+├── 🔨 Created function batch_predict_cortex_sam2.
+├── 🔨 Created function predict_sam3.
+├── 🔨 Created function merge_predictions.
+├── 🔨 Created function validate_submission.
+├── 🔨 Created function evaluate_hota.
+└── 🔨 Created function inspect_cache.
+{
+  "HOTA": 0.004479283314669653,
+  "DetA": 0.004479283314669653,
+  "AssA": 0.004479283314669653,
+  "LocA": 0.838052543280825,
+  "questions": 1
+}
+Stopping app - local entrypoint completed.
+✓ App completed. View run at 
+https://modal.com/apps/gpudashboard0/main/ap-9Wbq6QJVvNwd1zbTIdLJ33

@@ -27,4 +27,15 @@ The legacy `run_advanced` path had an undefined `tracking_stride`; it now defaul
 
 ## Parser/recovery rerun
 
+Exact corrected-parser commands (Modal workspace `baptinjean`):
+
+```bash
+MODAL_PROFILE=baptinjean modal run modal_app.py::predict_molmo2_sam2 --split valid --video-id video_10016 --question-id 8 --output molmo2_fixed_q8.json --output-step 30 --tracking-stride 30
+MODAL_PROFILE=baptinjean modal run modal_app.py::evaluate_hota --split valid --output molmo2_fixed_q8.json --allow-partial
+MODAL_PROFILE=baptinjean modal run modal_app.py::predict_molmo2_sam2 --split valid --video-id video_10016 --question-id 9 --output molmo2_fixed_q9.json --output-step 30 --tracking-stride 30
+MODAL_PROFILE=baptinjean modal run modal_app.py::evaluate_hota --split valid --output molmo2_fixed_q9.json --allow-partial
+MODAL_PROFILE=baptinjean modal run modal_app.py::predict_molmo2_sam2 --split valid --video-id video_10016 --question-id 10 --output molmo2_fixed_q10.json --output-step 30 --tracking-stride 30
+MODAL_PROFILE=baptinjean modal run modal_app.py::evaluate_hota --split valid --output molmo2_fixed_q10.json --allow-partial
+```
+
 After preserving Molmo2 object IDs and enabling recovery, the rerun measured Q8 `0.004267`, Q9 `0.038440`, Q10 `0.249480`, mean `0.097396`. These artifacts, manifests, raw responses, validator outputs, metric logs, and hashes are named `evidence/molmo2_fixed_q{8,9,10}.*`. The ID-preserving parser is correct and auditable, but this particular selection heuristic reduced the controlled mean; it is not promoted or scaled.
