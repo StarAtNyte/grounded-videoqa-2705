@@ -7,6 +7,24 @@ This repo uses the official Google DeepMind archives, stored in a Modal Volume:
 
 Raw data, predictions, and model caches stay out of git.
 
+## Leaderboard status
+
+_Last checked: 2026-08-19._ This table tracks the public leaderboard and all
+known project submissions, including private submissions. Private entries are
+counted in **Project submissions** but do not receive a public leaderboard rank
+until made public.
+
+| Entry | Visibility | HOTA | Public rank | Verification |
+|---|---|---:|---:|---|
+| `StarAtNyte` reported EvalAI result | Public (reported) | **0.2120** | **1** | Submission ID/artifact identity still unconfirmed |
+| Project private submissions | Private | — | Not ranked | **0 confirmed** |
+
+**Project submissions counted: 1 reported public + 0 confirmed private = 1.**
+When a private EvalAI submission is created, add its submission ID, score, and
+artifact SHA-256 here; keep it in the count even if it is later made public.
+See `SUBMISSION_RESULT.md` for the evidence caveat and `AGENTS.md` for upload
+rules.
+
 ## Setup
 
 ```bash
