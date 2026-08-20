@@ -376,33 +376,29 @@ def run_cortex_sam2(video: str | Path, reasoning: dict, sam2_checkpoint: str,
             proposal_box = None
     trial_tracks = []
     for obj_index, anchor, point, singleton in candidates:
-        box = proposal_box
         px, py = point[0] * w, point[1] * h
-        if box:
-            box_xyxy = tuple(box)
-            prompt_point = None
-        else:
-            # Use a point prompt for Molmo's tiny-object candidate. Trials
-            # should measure whether SAM2 can actually follow that point.
-            box_xyxy = None
-            prompt_point = (px, py)
-        # Trial propagation uses a sparse clip to match the official cadence;
-        # this avoids expensive full-rate decoding and SAM2 tail-index errors.
-        sparse_path, sparse_n = _sparse_video(video, tracking_stride)
-        try:
-            sparse_anchor = max(0, min(sparse_n - 1, round(anchor / tracking_stride)))
-            tr = tracker.track(sparse_path, sparse_anchor, box_xyxy, obj_index + 1,
-                               sparse_n, w, h, output_step=output_step,
-                               point_xy=prompt_point, frame_stride=tracking_stride,
-                               trial_window=60, recover_occlusions=True,
-                               recovery_stride=tracking_stride)
-        finally:
-            Path(sparse_path).unlink(missing_ok=True)
-        trial_tracks.append((tr, obj_index, anchor, point, singleton))
+        # When DINO supplies a proposal, compare it against a point-only trial
+        # rather than assuming either prompt type is universally superior.
+        prompt_modes = [(tuple(proposal_box), None)] if proposal_box else []
+        prompt_modes.append((None, (px, py)))
+        for box_xyxy, prompt_point in prompt_modes:
+            # Trial propagation uses a sparse clip to match the official cadence;
+            # this avoids expensive full-rate decoding and SAM2 tail-index errors.
+            sparse_path, sparse_n = _sparse_video(video, tracking_stride)
+            try:
+                sparse_anchor = max(0, min(sparse_n - 1, round(anchor / tracking_stride)))
+                tr = tracker.track(sparse_path, sparse_anchor, box_xyxy, obj_index + 1,
+                                   sparse_n, w, h, output_step=output_step,
+                                   point_xy=prompt_point, frame_stride=tracking_stride,
+                                   trial_window=60, recover_occlusions=True,
+                                   recovery_stride=tracking_stride)
+            finally:
+                Path(sparse_path).unlink(missing_ok=True)
+            trial_tracks.append((tr, obj_index, anchor, point, singleton, box_xyxy))
     # Select the most stable trial: coverage and non-degenerate mask scores
     # are cheap proxies for the short-track quality objective.
     def trial_score(item):
-        tr, _, anchor, point, singleton = item
+        tr, _, anchor, point, singleton, _box = item
         boxes = tr.boxes
         valid = [b for b in boxes if b[2] > b[0] and b[3] > b[1]]
         coverage = len(valid) / max(1, len(boxes))
@@ -445,7 +441,7 @@ def run_cortex_sam2(video: str | Path, reasoning: dict, sam2_checkpoint: str,
                       else max(local, key=trial_score))
         else:
             winner = max(trial_tracks, key=trial_score)
-    _, winner_obj, winner_anchor, winner_point, _ = winner
+    _, winner_obj, winner_anchor, winner_point, _, winner_box = winner
     px, py = winner_point[0] * w, winner_point[1] * h
     full_sparse = None
     full_video = str(video); full_anchor = winner_anchor; full_n = n; full_stride = 1
@@ -458,7 +454,7 @@ def run_cortex_sam2(video: str | Path, reasoning: dict, sam2_checkpoint: str,
         full_anchor = max(0, min(full_n - 1, round(winner_anchor / tracking_stride)))
         full_stride = tracking_stride
     try:
-        full_track = tracker.track(full_video, full_anchor, proposal_box, winner_obj + 1,
+        full_track = tracker.track(full_video, full_anchor, winner_box, winner_obj + 1,
                                    full_n, w, h, output_step=output_step,
                                    point_xy=(px, py), frame_stride=full_stride,
                                    recover_occlusions=not reference_mode,
@@ -486,4 +482,5 @@ def run_cortex_sam2(video: str | Path, reasoning: dict, sam2_checkpoint: str,
                     "tracking_stride": tracking_stride, "reference_mode": reference_mode,
                     "grounding_strategy": grounding_strategy,
                     "proposal_grounding": proposal_grounding,
-                    "proposal_box": proposal_box}
+                    "proposal_box": proposal_box,
+                    "selected_prompt": "box" if winner_box else "point"}
