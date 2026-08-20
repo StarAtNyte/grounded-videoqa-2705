@@ -1,6 +1,6 @@
 # Multi-point and proposal-gating experiments
 
-All runs used pretrained inference only on `video_10016`, valid Q8/Q9/Q10. No validation/test labels, manual annotations, or training data were used. Existing baseline/reference modes remain unchanged and both options are opt-in.
+All runs used pretrained inference only on `video_10016`, valid Q8/Q9/Q10. The multi-point candidate uses `allenai/Molmo2-8B` plus `facebook/sam2.1-hiera-large`; the proposal-gating candidate uses `gemini-3.6-flash` cached reasoning, `allenai/Molmo-7B-O-0924`, `IDEA-Research/grounding-dino-tiny`, and `facebook/sam2.1-hiera-large`. No validation/test labels, manual annotations, or training data were used. Existing baseline/reference modes remain unchanged and both options are opt-in.
 
 ## Molmo2 multi-point candidate
 

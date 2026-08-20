@@ -2,6 +2,8 @@
 
 ## Exact reproducibility records
 
+Configuration and leakage statement: baseline/reference uses cached CORTEX reasoning from pretrained `gemini-3.6-flash`, patched `allenai/Molmo-7B-O-0924` spatial grounding, and `facebook/sam2.1-hiera-large`; proposal uses the same stack plus pretrained `IDEA-Research/grounding-dino-tiny`. All runs are pretrained inference only on the valid controlled slice. No validation/test labels, manual annotations, or training data are used; baseline/reference modes remain preserved.
+
 Each row identifies the exact Modal command, evaluator command, local captured metric log, and the expected one-question payload. Use `modal run modal_app.py::export_controlled_artifact --output <file>` to stream the exact remote JSON and SHA-256 for repository/auditor capture; use `python validate.py -` on that stream (or save it first).
 
 | artifact | prediction command | evaluator command | metric log | HOTA |

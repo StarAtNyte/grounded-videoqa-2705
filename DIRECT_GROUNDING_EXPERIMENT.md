@@ -1,6 +1,6 @@
 # Direct-grounding experiment
 
-Opt-in TutuAI-style direct grounding: one video VLM emits first-appearance frame and normalized box; bidirectional SAM2.1-Hiera-Large produces official tracks. Existing CORTEX/reference/proposal paths are unchanged.
+Opt-in TutuAI-style direct grounding: pretrained `gemini-2.5-flash` emits the first-appearance frame and normalized box; pretrained `facebook/sam2.1-hiera-large` produces official tracks. Existing CORTEX/reference/proposal paths are unchanged. All runs are pretrained inference only on the valid controlled slice; no validation/test labels, manual annotations, or training data are used.
 
 ## Exact controlled records
 
