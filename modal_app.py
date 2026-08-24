@@ -1222,6 +1222,39 @@ def inspect_cache(split: str, video_id: str, question_id: str) -> None:
     print(cache.read_text() if cache.exists() else f"missing: {cache}")
 
 
+@app.function(image=image, volumes={DATA_ROOT: volume}, timeout=300)
+def audit_v2_progress(split: str = "test", outputs: str = "") -> None:
+    """Report exact Gemini 3.7 cache and prediction-artifact coverage."""
+    cache_root = pathlib.Path(DATA_ROOT) / "cache" / split
+    reasoning = 0
+    for path in cache_root.glob("*/*.json"):
+        try:
+            payload = json.loads(path.read_text())
+            provenance = payload.get("provenance", {})
+            if (provenance.get("model") == "gemini-3.7-flash" and
+                    provenance.get("auth_backend") == "vertex"):
+                reasoning += 1
+        except (OSError, ValueError, TypeError):
+            continue
+    prediction_counts = {}
+    for name in filter(None, (item.strip() for item in outputs.split(","))):
+        path = pathlib.Path(DATA_ROOT) / "predictions" / name
+        count = 0
+        if path.exists():
+            try:
+                payload = json.loads(path.read_text())
+                count = sum(len(video.get("grounded_question", {}))
+                            for video in payload.values())
+            except (OSError, ValueError, TypeError, AttributeError):
+                count = -1
+        prediction_counts[name] = count
+    print(json.dumps({"split": split, "reasoning": reasoning,
+                      "predictions": prediction_counts,
+                      "prediction_total": sum(max(0, value)
+                                              for value in prediction_counts.values())},
+                     indent=2))
+
+
 @app.local_entrypoint()
 def main() -> None:
     print("Use modal run modal_app.py::download --split test")
