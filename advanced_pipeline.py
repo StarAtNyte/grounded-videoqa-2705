@@ -410,74 +410,83 @@ def run_cortex_sam2(video: str | Path, reasoning: dict, sam2_checkpoint: str,
         trigger_bonus = 1.0 / (1.0 + abs(anchor - n // 2) / max(1, n))
         return (coverage + 0.15 * confidence + 0.1 * trigger_bonus
                 - 0.2 * area_penalty + 0.15 * float(singleton))
-    if reference_mode:
-        # Faithful winner-style baseline: use the first successful trigger
-        # grounding, not a post-hoc candidate quality oracle.
-        winner = trial_tracks[0]
-    else:
+    def select_winner(object_trials):
+        if reference_mode:
+            # Faithful winner-style baseline: use the first successful trigger
+            # grounding, not a post-hoc candidate quality oracle.
+            return object_trials[0]
         # Molmo singleton output is strong identity evidence. Prefer the
         # strongest singleton in temporal search order; quality scoring only
         # resolves ties among observations from the same search context.
-        singleton_trials = [x for x in trial_tracks if x[4]]
+        singleton_trials = [x for x in object_trials if x[4]]
         # CORTEX provides the intended temporal anchor; among singleton
         # observations, choose the one nearest the reasoner's anchor rather
         # than the first probe (which may be an early decoy).
         if singleton_trials:
-            target_anchor = int(max(
-                (a.get("frame", n // 2) for o in objects for a in (o.get("anchors", []) or [])),
-                default=n // 2))
+            object_index = singleton_trials[0][1]
+            object_data = objects[object_index]
+            target_anchor = int(max((a.get("frame", n // 2)
+                                     for a in (object_data.get("anchors", []) or [])),
+                                    default=n // 2))
             # Temporal proximity is the primary identity cue, but use the
             # short SAM2 trial quality as a tie-breaker. A tiny target can be
             # absent exactly at CORTEX's frame while visible a few frames away.
             nearest = min(abs(x[2] - target_anchor) for x in singleton_trials)
             local = [x for x in singleton_trials if abs(x[2] - target_anchor) <= nearest + 30]
-            short_relation = any(
-                (o.get("relations") and any(float(b) - float(a) <= 60 for a, b in (o.get("visible_intervals") or [])))
-                for o in objects)
+            short_relation = (object_data.get("relations") and any(
+                float(b) - float(a) <= 60
+                for a, b in (object_data.get("visible_intervals") or [])))
             # For tiny targets visible only in a short interval, prefer the
             # last successful probe: Molmo may see the occluder at the trigger
             # instant and the target immediately after it is revealed.
-            winner = (max(local, key=lambda x: x[2]) if short_relation
-                      else max(local, key=trial_score))
-        else:
-            winner = max(trial_tracks, key=trial_score)
-    _, winner_obj, winner_anchor, winner_point, _, winner_box = winner
-    px, py = winner_point[0] * w, winner_point[1] * h
-    full_sparse = None
-    full_video = str(video); full_anchor = winner_anchor; full_n = n; full_stride = 1
-    if tracking_stride != 1:
-        # Propagate at the configured comparison rate for every mode. This
-        # avoids an expensive full-rate pass after candidate selection and
-        # matches the winner's reported 10-FPS tracking setup.
-        full_sparse, full_n = _sparse_video(video, tracking_stride)
-        full_video = full_sparse
-        full_anchor = max(0, min(full_n - 1, round(winner_anchor / tracking_stride)))
-        full_stride = tracking_stride
-    try:
-        full_track = tracker.track(full_video, full_anchor, winner_box, winner_obj + 1,
-                                   full_n, w, h, output_step=output_step,
-                                   point_xy=(px, py), frame_stride=full_stride,
-                                   recover_occlusions=not reference_mode,
-                                   recovery_stride=30)
-    finally:
-        if full_sparse is not None: Path(full_sparse).unlink(missing_ok=True)
-    # Serialize only official scoring frames. The winner-style tracker may
-    # run at 10 FPS (source stride 3), but the organizer schema/evaluator uses
-    # the 30-frame cadence; emitting every 3rd frame causes false mismatches.
-    if tracking_stride != 30:
-        keep = [i for i, fid in enumerate(full_track.frame_ids) if fid % 30 == 0]
-        full_track.frame_ids = [full_track.frame_ids[i] for i in keep]
-        full_track.boxes = [full_track.boxes[i] for i in keep]
-        full_track.confidences = [full_track.confidences[i] for i in keep]
-    # Keep the full propagation track even when it is degenerate, and expose
-    # validity in diagnostics.
-    full_valid = sum(b[2] > b[0] and b[3] > b[1] for b in full_track.boxes)
-    tracks = [full_track.to_submission()]
+            return (max(local, key=lambda x: (x[2], trial_score(x))) if short_relation
+                    else max(local, key=trial_score))
+        return max(object_trials, key=trial_score)
+
+    # Select one winner per semantic answer object. The previous global winner
+    # silently collapsed plural answers to one track even when CORTEX and Molmo
+    # had successfully grounded every object.
+    winners = []
+    for object_index in sorted({x[1] for x in trial_tracks}):
+        object_trials = [x for x in trial_tracks if x[1] == object_index]
+        if object_trials:
+            winners.append(select_winner(object_trials))
+
+    tracks = []
+    selected_diagnostics = []
+    for winner in winners:
+        _, winner_obj, winner_anchor, winner_point, _, winner_box = winner
+        px, py = winner_point[0] * w, winner_point[1] * h
+        full_sparse = None
+        full_video = str(video); full_anchor = winner_anchor; full_n = n; full_stride = 1
+        if tracking_stride != 1:
+            full_sparse, full_n = _sparse_video(video, tracking_stride)
+            full_video = full_sparse
+            full_anchor = max(0, min(full_n - 1, round(winner_anchor / tracking_stride)))
+            full_stride = tracking_stride
+        try:
+            full_track = tracker.track(
+                full_video, full_anchor, winner_box, winner_obj + 1,
+                full_n, w, h, output_step=output_step,
+                point_xy=(px, py), frame_stride=full_stride,
+                recover_occlusions=not reference_mode, recovery_stride=30)
+        finally:
+            if full_sparse is not None: Path(full_sparse).unlink(missing_ok=True)
+        if tracking_stride != 30:
+            keep = [i for i, fid in enumerate(full_track.frame_ids) if fid % 30 == 0]
+            full_track.frame_ids = [full_track.frame_ids[i] for i in keep]
+            full_track.boxes = [full_track.boxes[i] for i in keep]
+            full_track.confidences = [full_track.confidences[i] for i in keep]
+        full_valid = sum(b[2] > b[0] and b[3] > b[1] for b in full_track.boxes)
+        tracks.append(full_track.to_submission())
+        selected_diagnostics.append({"object": winner_obj, "anchor": winner[2],
+                                     "point": winner[3], "score": trial_score(winner),
+                                     "full_valid": full_valid})
     return tracks, {"objects": len(objects), "grounded": len(candidates),
                     "anchors": [x[2] for x in trial_tracks], "points": [x[3] for x in trial_tracks],
                     "candidate_singletons": [bool(x[4]) for x in trial_tracks],
-                    "selected": {"anchor": winner[2], "point": winner[3], "score": trial_score(winner),
-                                 "full_valid": full_valid},
+                    "selected": (selected_diagnostics[0] if len(selected_diagnostics) == 1
+                                 else selected_diagnostics),
                     "fps": fps, "output_step": output_step,
                     "tracking_stride": tracking_stride, "reference_mode": reference_mode,
                     "grounding_strategy": grounding_strategy,

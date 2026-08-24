@@ -87,8 +87,8 @@ modal run modal_app.py::predict_cortex_sam2_v2 --split valid --video-id video_10
 |---|---:|---:|---:|
 | Q8 | 0.000000 | 0.000000 | |
 | Q9 | 0.049760 | 0.671618 | |
-| Q10 | 0.278658 | 0.284290 | |
-| mean | 0.109473 | **0.318636** | |
+| Q10 | 0.278658 | **0.528002** | |
+| mean | 0.109473 | **0.399873** | |
 
 The Molmo2-ER candidate passes the `0.2062` controlled gate. Reasoning used
 `gemini-3.7-flash` with high thinking, 3 FPS video tokenization, Vertex AI
@@ -99,10 +99,12 @@ JSON parsing are rejected rather than cached.
 
 Q8 diagnostics show that Gemini correctly identified the glass marble and
 Molmo2-ER returned three candidate points, but the existing short-track
-selector chose the wrong candidate. Q9 is the clear gain. Q10 matches the
-prior Molmo2 direct-point result and currently emits one track despite Gemini
-correctly decomposing the answer into three cups. Before full scaling, reduce
-Molmo2-ER per-question latency and repair candidate/multi-object selection;
+selector chose the wrong candidate. Q9 is the clear single-object gain. A
+multi-object serialization bug was found and fixed: the pipeline previously
+selected one global winner even when Gemini and Molmo had produced several
+answer objects. Selecting and fully propagating one winner per semantic object
+raised Q10 from `0.284290` (one emitted cup) to `0.528002` (three stable cup
+tracks). Before full spatial scaling, reduce Molmo2-ER per-question latency;
 the current implementation is too slow to finish 1,859 questions safely before
 the test deadline.
 
