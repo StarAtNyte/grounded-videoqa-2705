@@ -7,19 +7,34 @@ This repo uses the official Google DeepMind archives, stored in a Modal Volume:
 
 Raw data, predictions, and model caches stay out of git.
 
+> **⚠️ DATASET UPDATE**: Organizers updated test/valid datasets on **Aug 11, 2026**.
+> Re-download both splits before any new inference: `modal run modal_app.py::download --split test`
+> and `modal run modal_app.py::download --split valid`.
+
 ## Leaderboard status
 
-_Last checked: 2026-08-19._ This table tracks the public leaderboard and all
+_Last checked: 2026-08-24._ This table tracks the public leaderboard and all
 known project submissions, including private submissions. Private entries are
 counted in **Project submissions** but do not receive a public leaderboard rank
 until made public.
 
 | Entry | Visibility | HOTA | Public rank | Verification |
 |---|---|---:|---:|---|
-| `StarAtNyte` reported EvalAI result | Public (reported) | **0.2120** | **1** | Submission ID/artifact identity still unconfirmed |
+| `Zero-shot video grounding pipeline` (submitted Aug 22) | Private; can be made public | **0.25** | **1 if public** | Score and EvalAI submission row confirmed by team; exact submission ID/result precision and artifact hash not yet recorded |
 | `StarAtNyte` submission `579655` | **Private** | **0.212013** | Not ranked | EvalAI result confirmed; artifact SHA-256 recorded below |
 
-**Project submissions counted: 1 reported public + 1 confirmed private = 2.**
+**Project submissions counted: 2 confirmed private test results.** At the live
+2026-08-24 leaderboard scores, publishing the `0.25` result would place it
+first, ahead of `Wind_Rain_Tower` (`0.227148`) and `ATD0709` (`0.223955`).
+
+The `0.25` submission is the established zero-shot v1 production pipeline:
+CORTEX-style Gemini video reasoning identifies the answer object and a strong
+trigger frame; Molmo spatial grounding localizes it; SAM2.1 Hiera-Large tracks
+it bidirectionally; and the serializer emits normalized boxes on the official
+sparse frame IDs with stable track identities. Its EvalAI metadata is method
+`Zero-shot video grounding pipeline` and description
+`Grounded VideoQA baseline pipeline (zero-shot)`. It is not evidence for the
+uncompleted v2 Molmo2-ER experiment below.
 
 Private submission `579655` used phase 5350, `zero-shot`, contact
 `khanalnitij20@gmail.com`, and artifact `test_submission.json` with SHA-256
@@ -31,7 +46,35 @@ artifact SHA-256 here; keep it in the count even if it is later made public.
 See `SUBMISSION_RESULT.md` for the evidence caveat and `AGENTS.md` for upload
 rules.
 
-## Setup
+## V2 Pipeline (HOTA improvement effort)
+
+The v2 pipeline upgrades the stack whose best reported HOTA is 0.25 (v1) toward the
+2025 winner's HOTA 0.497. See `V2_PIPELINE_EXPERIMENT.md` for full commands.
+
+**Key upgrades:**
+1. **Reasoning**: `gemini-3.6-flash` → `gemini-2.5-pro` (deeper trigger-frame reasoning)
+2. **CORTEX prompt v2**: question-family routing, OCR alias, visibility gap semantics
+3. **Grounding**: `Molmo-7B-O-0924` → `Molmo2-ER` (pixel-accurate spatial specialist)
+   or `Molmo2-VideoPoint-4B` (video-specific pointing, fine-tuned on VideoPoint data)
+4. **Tracking**: SAM2.1-Hiera-Large (unchanged, but with better anchor frames)
+
+Quick start for v2 inference:
+```bash
+# 1. Re-download updated datasets
+modal run modal_app.py::download --split test
+modal run modal_app.py::download --split valid
+
+# 2. Re-reason test split with gemini-2.5-pro
+modal run modal_app.py::batch_reason_pro --split test --limit 1900
+
+# 3. Full test inference
+modal run modal_app.py::batch_predict_v2 --split test \
+  --output v2_test_submission.json --spatial-model molmo2er
+
+# 4. Validate and submit
+python validate.py  # local schema check
+# Upload to EvalAI phase 5350
+```
 
 ```bash
 python -m pip install modal

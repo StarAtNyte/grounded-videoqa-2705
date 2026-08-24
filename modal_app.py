@@ -769,6 +769,260 @@ def batch_predict_sam3(split: str, output: str = "sam3_submission.json",
     print(json.dumps({"output": str(out), "jobs": len(jobs)}, indent=2))
 
 
+@app.function(image=image, volumes={DATA_ROOT: volume},
+              secrets=[modal.Secret.from_name("gemini-api-key"),
+                       modal.Secret.from_name("gemini-api-keys")], timeout=60 * 60 * 8)
+def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
+                     model: str = "gemini-2.5-pro", force: bool = False,
+                     cost_cap: int = 1900) -> None:
+    """Cache gemini-2.5-pro CORTEX reasoning (upgraded from gemini-3.6-flash).
+
+    The SGVR@KAIST 2025 winner used Gemini 2.5 Pro for trigger-moment reasoning;
+    the Pro model's deeper video understanding produces more precise trigger frames
+    and better object descriptions than the Flash variant. This function clears
+    stale flash-cached entries and regenerates with the Pro model.
+
+    Usage:
+        modal run modal_app.py::batch_reason_pro --split test --limit 1900
+    """
+    import os, time, cv2
+    from google import genai
+    from google.genai import types
+    from gvqa_reasoning import SYSTEM_PROMPT, parse_reasoning
+    root = pathlib.Path(DATA_ROOT) / split
+    db = json.loads(_find_json(root).read_text())
+    jobs = [(vid, q) for vid in sorted(db) for q in db[vid].get("grounded_question", [])]
+    jobs = jobs[start:start + limit] if limit else jobs[start:]
+    if limit > cost_cap:
+        raise ValueError(f"limit {limit} exceeds cost_cap {cost_cap}")
+    keys = []
+    for name in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
+        if os.environ.get(name): keys.append(os.environ[name])
+    for name in sorted(os.environ):
+        if name.startswith(("GOOGLE_API_KEY_", "GEMINI_API_KEY_")) and os.environ[name]:
+            keys.append(os.environ[name])
+    keys = list(dict.fromkeys(keys))
+    if not keys:
+        raise RuntimeError("No Gemini API key found in attached Modal secrets")
+    clients = [genai.Client(api_key=key) for key in keys]
+    done = 0; api_calls = 0; key_index = 0
+    for vid, qitem in jobs:
+        qid = str(qitem["id"])
+        cache = pathlib.Path(DATA_ROOT) / "cache" / split / vid / f"{qid}.json"
+        if cache.exists() and not force:
+            try:
+                cached = json.loads(cache.read_text())
+                prov = cached.get("provenance", {})
+                # Accept cache only if it was generated with the same Pro model
+                if (prov.get("model") == model and prov.get("split") == split and
+                        str(prov.get("question_id")) == str(qid) and
+                        int(prov.get("api_calls", 0)) >= 1 and
+                        int(prov.get("cost_cap", 0)) >= 1):
+                    done += 1; continue
+            except (OSError, ValueError, TypeError):
+                pass
+        video = _video_path(root, vid)
+        cap = cv2.VideoCapture(str(video))
+        n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        cap.release()
+        if api_calls >= cost_cap:
+            raise RuntimeError(f"Gemini cost cap exhausted after {api_calls} calls")
+        api_calls += 1
+        prompt = SYSTEM_PROMPT + f"\nVideo has {n} frames at {fps:.4f} FPS.\nQuestion: {qitem['question']}"
+        last_error = None; response = None
+        for attempt in range(max(3, len(clients))):
+            client = clients[key_index % len(clients)]
+            key_index += 1
+            uploaded = client.files.upload(file=str(video))
+            for _ in range(120):
+                state = getattr(uploaded, "state", None)
+                if not state or getattr(state, "name", "ACTIVE") == "ACTIVE": break
+                if getattr(state, "name", "") == "FAILED":
+                    raise RuntimeError("Gemini video processing failed")
+                time.sleep(2); uploaded = client.files.get(name=uploaded.name)
+            try:
+                response = client.models.generate_content(
+                    model=model, contents=[uploaded, prompt],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json", temperature=0.1))
+                break
+            except Exception as exc:
+                last_error = exc
+                text = str(exc).upper()
+                quota = "429" in text or "RESOURCE_EXHAUSTED" in text or "QUOTA" in text
+                if not quota and attempt >= 2: raise
+                if attempt + 1 < max(3, len(clients)):
+                    time.sleep(2 if quota else 10 * (attempt + 1))
+        if response is None:
+            raise RuntimeError(f"Gemini failed after {len(clients)} key(s): {last_error}")
+        parsed = parse_reasoning(response.text, n)
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({
+            "question": qitem["question"], "raw": response.text,
+            "provenance": {"model": model, "api_calls": api_calls, "cost_cap": cost_cap,
+                           "split": split, "question_id": str(qid)},
+            "reasoning": {"objects": [{"description": o.description, "count": o.count,
+                "relations": o.relations, "events": o.events,
+                "anchors": [{"frame": a.frame, "confidence": a.confidence} for a in o.anchors],
+                "visible_intervals": o.visible_intervals} for o in parsed.objects],
+                "answer_cardinality": parsed.answer_cardinality,
+                "confidence": parsed.confidence, "evidence": parsed.evidence}}, indent=2))
+        done += 1; volume.commit()
+        print(json.dumps({"done": done, "api_calls": api_calls,
+                          "video": vid, "question": qid}), flush=True)
+
+
+@app.function(image=molmo2_image, gpu="A100-80GB", volumes={DATA_ROOT: volume},
+              secrets=[modal.Secret.from_name("huggingface")], timeout=60 * 60 * 12)
+def predict_cortex_sam2_v2(split: str, video_id: str, question_id: str,
+                            output: str = "cortex_v2_predictions.json",
+                            sam2_checkpoint: str = "/data/checkpoints/sam2.1_hiera_large.pt",
+                            sam2_config: str = "/usr/local/lib/python3.11/site-packages/sam2/configs/sam2.1/sam2.1_hiera_l.yaml",
+                            output_step: int = 30, tracking_stride: int = 30,
+                            spatial_model: str = "molmo2er",
+                            grounding_strategy: str = "trigger") -> None:
+    """CORTEX v2: gemini-2.5-pro reasoning + Molmo2-ER/VideoPoint-4B grounding + SAM2.
+
+    spatial_model options:
+      - "molmo2er"   : Molmo2-ER (default, ~19 GB, specialized spatial pointing)
+      - "molmo2vp4b" : Molmo2-VideoPoint-4B (video-specific grounding, best for clear video)
+      - "molmo7b"    : Molmo-7B-O-0924 (legacy winner-aligned fallback)
+
+    This is the v2 production endpoint. Use batch_predict_v2 for full split inference.
+    """
+    from advanced_pipeline import run_cortex_sam2
+    from advanced_models import Molmo2ER, Molmo2VideoPoint4B, MolmoSpatial
+    root = pathlib.Path(DATA_ROOT) / split
+    db = json.loads(_find_json(root).read_text())
+    q = next((x for x in db[video_id].get("grounded_question", [])
+               if str(x["id"]) == str(question_id)), None)
+    if q is None: raise KeyError(f"unknown question {video_id}/{question_id}")
+    cache = pathlib.Path(DATA_ROOT) / "cache" / split / video_id / f"{question_id}.json"
+    if not cache.exists():
+        raise RuntimeError(f"missing CORTEX cache: {cache} — run batch_reason_pro first")
+    reasoning = json.loads(cache.read_text()).get("reasoning", {})
+    # Load the requested spatial grounding model
+    if spatial_model == "molmo2er":
+        spatial = Molmo2ER()
+    elif spatial_model == "molmo2vp4b":
+        spatial = Molmo2VideoPoint4B()
+    else:
+        spatial = MolmoSpatial()
+    tracks, diag = run_cortex_sam2(_video_path(root, video_id), reasoning,
+                                   sam2_checkpoint, sam2_config, output_step,
+                                   grounding_strategy=grounding_strategy,
+                                   tracking_stride=tracking_stride,
+                                   reference_mode=False,
+                                   proposal_grounding=False,
+                                   spatial_model=spatial)
+    pred = {video_id: {"grounded_question": {str(question_id): tracks}}}
+    out = pathlib.Path(DATA_ROOT) / "predictions" / output
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(pred)); volume.commit()
+    manifest = out.with_suffix(out.suffix + ".manifest.json")
+    manifest.write_text(json.dumps({
+        "split": split, "video_id": video_id, "question_id": str(question_id),
+        "spatial_model": spatial_model, "grounding_strategy": grounding_strategy,
+        "output": str(out), "diagnostics": diag,
+        "artifact_sha256": __import__('hashlib').sha256(out.read_bytes()).hexdigest()},
+        indent=2))
+    volume.commit()
+    print(json.dumps({"output": str(out), "tracks": len(tracks),
+                      "spatial_model": spatial_model, "diagnostics": diag}, indent=2))
+
+
+@app.function(image=molmo2_image, gpu="A100-80GB", volumes={DATA_ROOT: volume},
+              secrets=[modal.Secret.from_name("huggingface")], timeout=60 * 60 * 24)
+def batch_predict_v2(split: str = "test", output: str = "v2_submission.json",
+                     start: int = 0, limit: int = 0, output_step: int = 30,
+                     tracking_stride: int = 30, spatial_model: str = "molmo2er",
+                     grounding_strategy: str = "trigger",
+                     retry_empty: bool = True) -> None:
+    """Restartable v2 batch: CORTEX (gemini-2.5-pro) + Molmo2-ER/VP4B + SAM2.
+
+    Requires pre-cached reasoning from batch_reason_pro. Loads the spatial model
+    once and reuses it across all questions to minimize cold-start overhead.
+
+    Usage (full test split):
+        modal run modal_app.py::batch_reason_pro --split test
+        modal run modal_app.py::batch_predict_v2 --split test \\
+            --output v2_test_submission.json --spatial-model molmo2er
+
+    Usage (partial, restartable):
+        modal run modal_app.py::batch_predict_v2 --split test \\
+            --output v2_test_submission.json --start 0 --limit 500
+
+    spatial_model: "molmo2er" | "molmo2vp4b" | "molmo7b"
+    """
+    import os, gc
+    import torch
+    from advanced_pipeline import run_cortex_sam2
+    from advanced_models import Molmo2ER, Molmo2VideoPoint4B, MolmoSpatial
+    os.environ.setdefault("HF_HOME", "/data/hf-cache")
+    os.environ.setdefault("HF_HUB_CACHE", "/data/hf-cache/hub")
+    root = pathlib.Path(DATA_ROOT) / split
+    db = json.loads(_find_json(root).read_text())
+    jobs = [(vid, q) for vid in sorted(db) for q in db[vid].get("grounded_question", [])]
+    jobs = jobs[start:(start + limit) if limit else None]
+    out = pathlib.Path(DATA_ROOT) / "predictions" / output
+    out.parent.mkdir(parents=True, exist_ok=True)
+    heartbeat = out.with_suffix(out.suffix + ".heartbeat.json")
+    all_results = json.loads(out.read_text()) if out.exists() else {}
+    sam2_checkpoint = "/data/checkpoints/sam2.1_hiera_large.pt"
+    sam2_config = "/usr/local/lib/python3.11/site-packages/sam2/configs/sam2.1/sam2.1_hiera_l.yaml"
+    # Load spatial model once for the whole batch
+    if spatial_model == "molmo2er":
+        spatial = Molmo2ER()
+    elif spatial_model == "molmo2vp4b":
+        spatial = Molmo2VideoPoint4B()
+    else:
+        spatial = MolmoSpatial()
+    for index, (vid, q) in enumerate(jobs, start=start):
+        qid = str(q["id"])
+        existing = all_results.get(vid, {}).get("grounded_question", {}).get(qid)
+        if existing is not None and (not retry_empty or existing):
+            continue
+        cache = pathlib.Path(DATA_ROOT) / "cache" / split / vid / f"{qid}.json"
+        if not cache.exists():
+            heartbeat.write_text(json.dumps({"index": index, "video": vid,
+                                             "question": qid, "status": "skipped",
+                                             "reason": "missing reasoning cache"}))
+            print(json.dumps({"index": index, "video": vid, "question": qid,
+                               "status": "skipped", "reason": "missing cache"}), flush=True)
+            continue
+        reasoning = json.loads(cache.read_text()).get("reasoning", {})
+        heartbeat.write_text(json.dumps({"index": index, "video": vid, "question": qid,
+                                         "status": "running", "completed": sum(
+                                             len(v.get("grounded_question", {}))
+                                             for v in all_results.values())}))
+        volume.commit()
+        try:
+            tracks, diag = run_cortex_sam2(
+                _video_path(root, vid), reasoning,
+                sam2_checkpoint, sam2_config, output_step,
+                grounding_strategy=grounding_strategy,
+                tracking_stride=tracking_stride,
+                reference_mode=False, proposal_grounding=False,
+                spatial_model=spatial)
+            all_results.setdefault(vid, {"grounded_question": {}})["grounded_question"][qid] = tracks
+            status = {"ok": True, "tracks": len(tracks)}
+        except Exception as exc:
+            tracks = []; status = {"ok": False, "error": repr(exc)}
+        out.write_text(json.dumps(all_results))
+        heartbeat.write_text(json.dumps({"index": index, "video": vid, "question": qid,
+                                         "status": "completed" if status["ok"] else "failed",
+                                         "error": status.get("error"), "completed": sum(
+                                             len(v.get("grounded_question", {}))
+                                             for v in all_results.values())}))
+        volume.commit()
+        print(json.dumps({"index": index, "video": vid, "question": qid, **status}), flush=True)
+        gc.collect(); torch.cuda.empty_cache()
+    print(json.dumps({"output": str(out), "jobs": len(jobs),
+                      "spatial_model": spatial_model,
+                      "grounding_strategy": grounding_strategy}))
+
+
 @app.function(image=image, gpu="A100-80GB", volumes={DATA_ROOT: volume}, timeout=60 * 60 * 24)
 def batch_predict(split: str, output: str = "submission.json", backend: str = "sam2",
                   start: int = 0, limit: int = 0, spatial_refine: bool = False,

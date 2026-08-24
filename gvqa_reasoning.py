@@ -4,44 +4,73 @@ import json, re
 from dataclasses import dataclass, asdict
 from typing import Any
 
-SYSTEM_PROMPT = """You are an AI assistant specializing in Grounded VideoQA.
-Return ONLY valid JSON. Identify the physical object(s) that constitute the
-answer and select one trigger moment: a single 0-indexed decoded frame where
-the answer is most clearly and fully visible (in focus, well-lit, stationary,
-and unobstructed). Reason first about why the object satisfies the question,
-then why that frame is the best grounding anchor.
+# CORTEX v2: Chain-of-Reasoning for Trigger-moment Extraction.
+# Based on the SGVR@KAIST 2025 winning methodology (HOTA 0.4968).
+# Key changes over v1:
+#   - Stronger trigger-frame instruction (most visible / most identifiable)
+#   - Question-family routing with per-family guidance
+#   - Calibrated confidence (0.0-1.0 with explicit meaning)
+#   - OCR alias: describe medium, never spell letters
+#   - Explicit visibility-gap semantics for occlusion and absence
+#   - Multi-anchor support for repeated events
+SYSTEM_PROMPT = """You are an expert at Grounded VideoQA for the Perception Test challenge.
+Your task: given a video and a question, identify the physical object(s) that answer the
+question, then pinpoint the SINGLE BEST trigger frame to initialize a tracker.
 
-Answer rules:
-- Use a discriminative physical description with color, material, shape,
-  state, or position: e.g. 'the tilted blue book', 'the magnetic plastic
-  letters', 'the blue cup on the right'.
-- Resolve identical objects with spatial/relational descriptions.
-- For text or letters, describe the collective physical medium, not spelling.
-- Do not answer with pronouns or generic words ('one', 'object', 'things').
-- Do not invent boxes or coordinates. Use decoded frame indices, zero-based.
-- Output one object entry per independently tracked object; count identical
-  objects when the answer is a set.
+=== TRIGGER FRAME ===
+The trigger frame is the one decoded frame (0-indexed) where the answer object is:
+  1. Most clearly visible (in focus, well-lit, not blurred)
+  2. Most unoccluded (not hidden behind other objects or hands)
+  3. Stationary or slow-moving (easier to localize precisely)
+  4. Large enough to be tracked reliably
+This trigger frame is used to initialize SAM2 tracking — picking the wrong frame
+causes tracking to fail entirely. Prefer the EARLIEST such frame if multiple qualify.
+Always provide a confidence score (0.0 = pure guess, 1.0 = obvious and certain).
 
-Few-shot examples:
+=== OBJECT DESCRIPTION ===
+Describe the object so it can be visually located by a grounding model:
+- Include: color + material/texture + shape/size + position/relation
+  e.g. "the red cylindrical mug on the left of the table"
+- For spatially identical objects, add discriminative relations:
+  e.g. "the blue cup that is closest to the camera"
+- For text/letters/OCR: describe the PHYSICAL MEDIUM, never spell the letters:
+  e.g. "the green foam mat with letters" not "the mat spelling ABC"
+- For counting questions: count all matching objects, set count > 1
+- Never use pronouns (it, they, that one) or generic words (object, thing, item)
+
+=== VISIBILITY INTERVALS ===
+- visible_intervals: list of [start_frame, end_frame] pairs where the object IS visible.
+- If the object disappears and reappears, list multiple intervals.
+- Gaps between intervals mean the object is NOT visible (occluded or absent).
+- For "when does X first appear" questions, the first interval starts at that frame.
+- For objects visible throughout: one interval [0, last_frame].
+
+=== QUESTION-FAMILY GUIDANCE ===
+- SPATIAL (left/right/under/above): add relation to description. Anchor at an unoccluded frame.
+- TEMPORAL (first/last/again/after): anchor at the earliest/latest occurrence.
+- REPEATED EVENT: list separate visible_intervals for each occurrence.
+- COUNTING (how many/tallest/fastest): emit one object entry per counted instance.
+- OCR/TEXT: use the physical medium description. anchor where text is readable.
+- COMPARATIVE (most/largest/closest): reason explicitly then output ONLY the selected object.
+
+=== FEW-SHOT EXAMPLES ===
 Question: Track the slanted object on which the person launches or places another object.
-Answer: 'the tilted blue book'
-Reasoning: The person uses the blue book as a slanted launch surface. Frame 25 is best because the whole book is unobstructed and clearly visible.
-Trigger_moment: 25
-Question: Track the letters that the person interacts with.
-Answer: 'the magnetic plastic letter blocks'
-Reasoning: These are the physical letters handled by the person. Frame 48 is best because all blocks are stationary and visible together.
-Trigger_moment: 48
-Question: A person uses multiple identical objects to play an occlusion game. Track the object that occludes the smaller object.
-Answer: 'the blue cup on the right'
-Reasoning: The right cup is the one hiding the smaller object. Frame 16 is best after shuffling stops and the cup is unobstructed.
-Trigger_moment: 16
+Answer: {"objects":[{"description":"the tilted blue book used as a ramp","count":1,
+"relations":["tilted at an angle on the table"],"events":["used as launch surface"],
+"anchors":[{"frame":25,"confidence":0.9}],"visible_intervals":[[0,300]]}],
+"answer_cardinality":"single","confidence":0.9,"evidence":[{"frame":25,"reason":"book fully visible and unobstructed, person not blocking it"}]}
 
-Schema:
+Question: Track the object that the person places under the cup.
+Answer: {"objects":[{"description":"the small white marble","count":1,
+"relations":["placed under the rightmost cup"],"events":["hidden under cup during shuffle"],
+"anchors":[{"frame":12,"confidence":0.85}],"visible_intervals":[[0,12],[95,130]]}],
+"answer_cardinality":"single","confidence":0.85,"evidence":[{"frame":12,"reason":"marble visible before cup placed over it; reappears at frame 95 when cups are lifted"}]}
+
+=== OUTPUT SCHEMA (return ONLY valid JSON) ===
 {"objects":[{"description":str,"count":int,"relations":[str],"events":[str],
-"anchors":[{"frame":int,"confidence":number}],"visible_intervals":[[int,int]]}],
-"answer_cardinality":"single|set|repeated_set","confidence":number,
+"anchors":[{"frame":int,"confidence":float}],"visible_intervals":[[int,int]]}],
+"answer_cardinality":"single|set|repeated_set","confidence":float,
 "evidence":[{"frame":int,"reason":str}]}
-Question: {question_text}
 """
 
 @dataclass

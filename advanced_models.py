@@ -181,7 +181,8 @@ def parse_molmo_points(decoded: str) -> list[tuple[float, float]]:
                 continue
             x, y = float(attrs['x' + index]), float(attrs['y' + index])
             scale = 100.0 if max(x, y) <= 100.0 else 1000.0
-            nums.append((max(0., min(1., x / scale)), max(0., min(1., y / scale))))
+            nums.append((round(max(0., min(1., x / scale)), 6),
+                         round(max(0., min(1., y / scale)), 6)))
     for block in re.findall(r'<points[^>]*coords="([^"]+)"', decoded, re.I):
         values = [float(v) for v in re.findall(r'[0-9]+(?:\.[0-9]+)?', block)]
         pairs = []
@@ -242,6 +243,171 @@ class Molmo2VideoPoint:
                     points.append((float(group.group(1)), vals[idx],
                                    vals[idx + 1] / 1000.0, vals[idx + 2] / 1000.0))
         return generated, points
+
+
+class Molmo2VideoPoint4B:
+    """Molmo2-VideoPoint-4B: specialized for video spatial-temporal localization.
+
+    Based on Qwen3-4B + SigLIP2, fine-tuned on Molmo2-VideoPoint dataset.
+    Replaces Molmo-7B-O-0924 for grounding: more efficient (4B vs 7B) and
+    specifically trained for video pointing and tracking tasks.
+    """
+    def __init__(self, model_id: str = "allenai/Molmo2-VideoPoint-4B"):
+        import torch
+        from transformers import AutoProcessor, AutoModelForImageTextToText
+        from molmo_utils import process_vision_info
+        self.process_vision_info = process_vision_info
+        self.model_id = model_id
+        self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        self.model = AutoModelForImageTextToText.from_pretrained(
+            model_id, trust_remote_code=True,
+            torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+            device_map="auto")
+        self.model.eval()
+
+    def track_points(self, video: str, query: str,
+                     max_fps: int = 8) -> tuple[str, list[tuple[float, int, float, float]]]:
+        """Return (raw_text, [(time_s, obj_id, x_norm, y_norm), ...])."""
+        import torch
+        messages = [{"role": "user", "content": [
+            {"type": "text",
+             "text": (f"Track all objects that answer this question: {query}\n"
+                      "Use <tracks coords=...> format with persistent object IDs. "
+                      "Report every frame the object is visible. "
+                      "Do not track decoys or other objects.")},
+            {"type": "video", "video": str(Path(video).resolve()),
+             "max_fps": max_fps, "max_frames": 64},
+        ]}]
+        _, videos, kwargs = self.process_vision_info(messages)
+        metas = None
+        if videos:
+            try:
+                videos, metas = zip(*videos)
+                videos, metas = list(videos), list(metas)
+            except (TypeError, ValueError):
+                videos = list(videos)
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        inputs = self.processor(text=text, videos=videos, video_metadata=metas,
+                                return_tensors="pt", padding=True, **(kwargs or {}))
+        inputs = {k: v.to(self.model.device) if hasattr(v, "to") else v
+                  for k, v in inputs.items()}
+        with torch.inference_mode():
+            ids = self.model.generate(**inputs, max_new_tokens=2048)
+        generated = self.processor.tokenizer.decode(
+            ids[0, inputs["input_ids"].size(1):], skip_special_tokens=True)
+        # Same parsing logic as Molmo2VideoPoint
+        points = []
+        for block in re.findall(r'<(?:points|tracks)[^>]*coords="([^"]+)"', generated, re.I):
+            for group in re.finditer(r'(?:^|[\t:;,])([0-9.]+) ([0-9 ]+)', block):
+                vals = [int(x) for x in re.findall(r"\d+", group.group(2))]
+                for idx in range(0, len(vals) - 2, 3):
+                    points.append((float(group.group(1)), vals[idx],
+                                   vals[idx + 1] / 1000.0, vals[idx + 2] / 1000.0))
+        return generated, points
+
+    def point_on_frame(self, image, description: str) -> list[tuple[float, float]]:
+        """Point to an object in a single frame (for fallback/refinement)."""
+        import torch
+        from PIL import Image as PILImage
+        messages = [{"role": "user", "content": [
+            {"type": "text",
+             "text": f"Point to the {description} in this image."},
+            {"type": "image", "image": image},
+        ]}]
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        inputs = self.processor(text=text, images=[image], return_tensors="pt", padding=True)
+        inputs = {k: v.to(self.model.device) if hasattr(v, "to") else v
+                  for k, v in inputs.items()}
+        with torch.inference_mode():
+            out = self.model.generate(**inputs, max_new_tokens=128)
+        decoded = self.processor.decode(
+            out[0, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+        return parse_molmo_points(decoded)
+
+    def point_variants(self, image, description: str) -> list[tuple[float, float]]:
+        """Return deduplicated points for the given description (same API as MolmoSpatial)."""
+        variants = [description]
+        if re.search(r"marble|bead|small|tiny", description, re.I):
+            variants += ["small transparent glass marble on the table",
+                         "small round object on the white table"]
+        points: list[tuple[float, float]] = []
+        for query in variants:
+            for pt in self.point_on_frame(image, query):
+                if all((pt[0] - old[0]) ** 2 + (pt[1] - old[1]) ** 2 > 0.01 ** 2
+                       for old in points):
+                    points.append(pt)
+        return points
+
+
+class Molmo2ER:
+    """Molmo2-ER: embodied spatial reasoning specialist.
+
+    allenai/Molmo2-ER is a 4B Molmo2 derivative specifically optimized for
+    pixel-accurate pointing, egocentric video, and spatial reasoning.
+    It achieves +17 pts over base Molmo2 on embodied benchmarks.
+
+    Use as a second-pass spatial refinement when Molmo-7B confidence is low,
+    or as the primary spatial model to replace MolmoSpatial entirely.
+    Only ~19 GB of artifacts — runs comfortably alongside SAM2 on A100 80GB.
+    """
+    def __init__(self, model_id: str = "allenai/Molmo2-ER"):
+        import torch
+        from transformers import AutoProcessor, AutoModelForImageTextToText
+        self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        self.model = AutoModelForImageTextToText.from_pretrained(
+            model_id, trust_remote_code=True,
+            torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+            device_map="auto")
+        self.model.eval()
+
+    def point_variants(self, image, description: str) -> list[tuple[float, float]]:
+        """Return deduplicated points for the given description (same API as MolmoSpatial)."""
+        variants = [description]
+        if re.search(r"marble|bead|small|tiny", description, re.I):
+            variants += ["small transparent glass marble on the table",
+                         "small round object on the white table"]
+        points: list[tuple[float, float]] = []
+        for query in variants:
+            for pt in self.point(image, query):
+                if all((pt[0] - old[0]) ** 2 + (pt[1] - old[1]) ** 2 > 0.01 ** 2
+                       for old in points):
+                    points.append(pt)
+        return points
+
+    def point(self, image, description: str) -> list[tuple[float, float]]:
+        """Spatial pointing with Molmo2-ER (same API as MolmoSpatial.point)."""
+        import torch
+        raw = str(description).strip()
+        relation = re.search(r";\s*relation:\s*(.*?)(?:;\s*event:|$)", raw, flags=re.I)
+        clean = re.split(r";\s*(?:relation|event):", raw, maxsplit=1, flags=re.I)[0].strip(" .")
+        clean = re.sub(r"^(?:the|a|an)\s+", "", clean, flags=re.I)
+        if relation:
+            rel = relation.group(1).strip(" .")
+            prompt = f"Point to the {clean} {rel} in this image."
+        else:
+            prompt = f"Point to the {clean} in this image."
+        messages = [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image", "image": image},
+        ]}]
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        inputs = self.processor(text=text, images=[image], return_tensors="pt", padding=True)
+        inputs = {k: v.to(self.model.device) if hasattr(v, "to") else v
+                  for k, v in inputs.items()}
+        with torch.inference_mode():
+            out = self.model.generate(**inputs, max_new_tokens=128)
+        decoded = self.processor.decode(
+            out[0, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+        points = parse_molmo_points(decoded)
+        if not points and relation:
+            fallback = "small " + clean if re.search(
+                r"under|beneath|occlud|hidden|inside", relation.group(1), flags=re.I) else clean
+            return self.point(image, fallback)
+        return [(x, y) for x, y in points if 0.01 < x < 0.99 and 0.01 < y < 0.99]
+
 
 
 class MolmoSpatial:
