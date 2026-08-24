@@ -773,7 +773,7 @@ def batch_predict_sam3(split: str, output: str = "sam3_submission.json",
               secrets=[modal.Secret.from_name("gemini-api-key"),
                        modal.Secret.from_name("gemini-api-keys"),
                        modal.Secret.from_name("gcp-vertex-service-account")],
-              timeout=60 * 60 * 8)
+              timeout=60 * 60 * 24)
 def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
                      model: str = "gemini-3.7-flash", force: bool = False,
                      cost_cap: int = 1900, use_vertex: bool = False,
