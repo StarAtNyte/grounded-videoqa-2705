@@ -545,7 +545,7 @@ def predict_direct_sam2(split: str, video_id: str, question_id: str,
 
 
 @app.function(image=molmo7_image, gpu="A100-80GB", volumes={DATA_ROOT: volume},
-              secrets=[modal.Secret.from_name("huggingface")], timeout=60 * 60 * 12)
+              secrets=[modal.Secret.from_name("huggingface-secret")], timeout=60 * 60 * 12)
 def predict_cortex_sam2(split: str, video_id: str, question_id: str,
                         output: str = "cortex_sam2_predictions.json",
                         sam2_checkpoint: str = "/data/checkpoints/sam2.1_hiera_large.pt",
@@ -638,7 +638,7 @@ def batch_predict_molmo2_sam2(split: str = "test", output: str = "molmo2_multipo
 
 
 @app.function(image=molmo7_image, gpu="A100-80GB", volumes={DATA_ROOT: volume},
-              secrets=[modal.Secret.from_name("huggingface")], timeout=60 * 60 * 24)
+              secrets=[modal.Secret.from_name("huggingface-secret")], timeout=60 * 60 * 24)
 def batch_predict_cortex_sam2(split: str = "valid", output: str = "cortex_sam2_subset.json",
                               start: int = 0, limit: int = 20, output_step: int = 30,
                               grounding_strategy: str = "trigger", tracking_stride: int = 30,
@@ -694,7 +694,7 @@ def batch_predict_cortex_sam2(split: str = "valid", output: str = "cortex_sam2_s
 
 
 @app.function(image=sam3_image, gpu="A100-80GB", volumes={DATA_ROOT: volume},
-              secrets=[modal.Secret.from_name("huggingface")], timeout=60 * 60 * 8)
+              secrets=[modal.Secret.from_name("huggingface-secret")], timeout=60 * 60 * 8)
 def predict_sam3(split: str, video_id: str, question_id: str,
                  output: str = "sam3_predictions.json", prompt: str = "",
                  anchor_frame: int = -1, output_step: int = 30) -> None:
@@ -732,7 +732,7 @@ def predict_sam3(split: str, video_id: str, question_id: str,
 
 
 @app.function(image=sam3_image, gpu="A100-80GB", volumes={DATA_ROOT: volume},
-              secrets=[modal.Secret.from_name("huggingface")], timeout=60 * 60 * 24)
+              secrets=[modal.Secret.from_name("huggingface-secret")], timeout=60 * 60 * 24)
 def batch_predict_sam3(split: str, output: str = "sam3_submission.json",
                        start: int = 0, limit: int = 0, output_step: int = 30,
                        retry_empty: bool = True) -> None:
@@ -771,11 +771,17 @@ def batch_predict_sam3(split: str, output: str = "sam3_submission.json",
 
 @app.function(image=image, volumes={DATA_ROOT: volume},
               secrets=[modal.Secret.from_name("gemini-api-key"),
-                       modal.Secret.from_name("gemini-api-keys")], timeout=60 * 60 * 8)
+                       modal.Secret.from_name("gemini-api-keys"),
+                       modal.Secret.from_name("gcp-vertex-service-account")],
+              timeout=60 * 60 * 8)
 def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
-                     model: str = "gemini-2.5-pro", force: bool = False,
-                     cost_cap: int = 1900) -> None:
-    """Cache gemini-2.5-pro CORTEX reasoning (upgraded from gemini-3.6-flash).
+                     model: str = "gemini-3.7-flash", force: bool = False,
+                     cost_cap: int = 1900, use_vertex: bool = False,
+                     vertex_project: str = "veotest-460812",
+                     vertex_location: str = "global",
+                     vertex_video_fps: float = 3.0,
+                     thinking_level: str = "high") -> None:
+    """Cache Gemini CORTEX reasoning with model/auth provenance.
 
     The SGVR@KAIST 2025 winner used Gemini 2.5 Pro for trigger-moment reasoning;
     the Pro model's deeper video understanding produces more precise trigger frames
@@ -783,7 +789,7 @@ def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
     stale flash-cached entries and regenerates with the Pro model.
 
     Usage:
-        modal run modal_app.py::batch_reason_pro --split test --limit 1900
+        modal run modal_app.py::batch_reason_pro --split test --limit 1900 --use-vertex
     """
     import os, time, cv2
     from google import genai
@@ -795,16 +801,29 @@ def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
     jobs = jobs[start:start + limit] if limit else jobs[start:]
     if limit > cost_cap:
         raise ValueError(f"limit {limit} exceeds cost_cap {cost_cap}")
-    keys = []
-    for name in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
-        if os.environ.get(name): keys.append(os.environ[name])
-    for name in sorted(os.environ):
-        if name.startswith(("GOOGLE_API_KEY_", "GEMINI_API_KEY_")) and os.environ[name]:
-            keys.append(os.environ[name])
-    keys = list(dict.fromkeys(keys))
-    if not keys:
-        raise RuntimeError("No Gemini API key found in attached Modal secrets")
-    clients = [genai.Client(api_key=key) for key in keys]
+    auth_backend = "vertex" if use_vertex else "developer-api"
+    if use_vertex:
+        credentials_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+        if not credentials_json:
+            raise RuntimeError("Vertex credential JSON missing from Modal secret")
+        credentials_path = pathlib.Path("/tmp/gcp_vertex_credentials.json")
+        credentials_path.write_text(credentials_json)
+        credentials_path.chmod(0o600)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(credentials_path)
+        clients = [genai.Client(vertexai=True, project=vertex_project,
+                                location=vertex_location,
+                                http_options=types.HttpOptions(timeout=180_000))]
+    else:
+        keys = []
+        for name in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
+            if os.environ.get(name): keys.append(os.environ[name])
+        for name in sorted(os.environ):
+            if name.startswith(("GOOGLE_API_KEY_", "GEMINI_API_KEY_")) and os.environ[name]:
+                keys.append(os.environ[name])
+        keys = list(dict.fromkeys(keys))
+        if not keys:
+            raise RuntimeError("No Gemini API key found in attached Modal secrets")
+        clients = [genai.Client(api_key=key) for key in keys]
     done = 0; api_calls = 0; key_index = 0
     for vid, qitem in jobs:
         qid = str(qitem["id"])
@@ -814,7 +833,9 @@ def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
                 cached = json.loads(cache.read_text())
                 prov = cached.get("provenance", {})
                 # Accept cache only if it was generated with the same Pro model
-                if (prov.get("model") == model and prov.get("split") == split and
+                if (prov.get("model") == model and
+                        prov.get("auth_backend", "developer-api") == auth_backend and
+                        prov.get("split") == split and
                         str(prov.get("question_id")) == str(qid) and
                         int(prov.get("api_calls", 0)) >= 1 and
                         int(prov.get("cost_cap", 0)) >= 1):
@@ -834,18 +855,42 @@ def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
         for attempt in range(max(3, len(clients))):
             client = clients[key_index % len(clients)]
             key_index += 1
-            uploaded = client.files.upload(file=str(video))
-            for _ in range(120):
-                state = getattr(uploaded, "state", None)
-                if not state or getattr(state, "name", "ACTIVE") == "ACTIVE": break
-                if getattr(state, "name", "") == "FAILED":
-                    raise RuntimeError("Gemini video processing failed")
-                time.sleep(2); uploaded = client.files.get(name=uploaded.name)
             try:
+                if use_vertex:
+                    video_part = types.Part(inline_data=types.Blob(
+                        data=video.read_bytes(), mime_type="video/mp4"),
+                        video_metadata=types.VideoMetadata(fps=vertex_video_fps))
+                    contents = [types.Content(role="user", parts=[
+                        video_part, types.Part.from_text(text=prompt)])]
+                else:
+                    uploaded = client.files.upload(file=str(video))
+                    for _ in range(120):
+                        state = getattr(uploaded, "state", None)
+                        if not state or getattr(state, "name", "ACTIVE") == "ACTIVE": break
+                        if getattr(state, "name", "") == "FAILED":
+                            raise RuntimeError("Gemini video processing failed")
+                        time.sleep(2); uploaded = client.files.get(name=uploaded.name)
+                    contents = [uploaded, prompt]
+                if model.startswith("gemini-3"):
+                    generation_config = types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        max_output_tokens=16384,
+                        thinking_config=types.ThinkingConfig(
+                            thinking_level=thinking_level))
+                else:
+                    generation_config = types.GenerateContentConfig(
+                        response_mime_type="application/json", temperature=0.1,
+                        max_output_tokens=16384)
                 response = client.models.generate_content(
-                    model=model, contents=[uploaded, prompt],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json", temperature=0.1))
+                    model=model, contents=contents,
+                    config=generation_config)
+                candidate = response.candidates[0] if response.candidates else None
+                finish_reason = getattr(candidate, "finish_reason", None)
+                finish_name = getattr(finish_reason, "name", str(finish_reason or ""))
+                if "MAX_TOKENS" in finish_name.upper():
+                    raise RuntimeError("Gemini output was cut off at max_output_tokens")
+                if not getattr(response, "text", "").strip():
+                    raise RuntimeError(f"Gemini returned no text (finish_reason={finish_name})")
                 break
             except Exception as exc:
                 last_error = exc
@@ -860,7 +905,10 @@ def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps({
             "question": qitem["question"], "raw": response.text,
-            "provenance": {"model": model, "api_calls": api_calls, "cost_cap": cost_cap,
+            "provenance": {"model": model, "auth_backend": auth_backend,
+                           "vertex_project": vertex_project if use_vertex else None,
+                           "thinking_level": thinking_level if model.startswith("gemini-3") else None,
+                           "api_calls": api_calls, "cost_cap": cost_cap,
                            "split": split, "question_id": str(qid)},
             "reasoning": {"objects": [{"description": o.description, "count": o.count,
                 "relations": o.relations, "events": o.events,
@@ -874,7 +922,7 @@ def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
 
 
 @app.function(image=molmo2_image, gpu="A100-80GB", volumes={DATA_ROOT: volume},
-              secrets=[modal.Secret.from_name("huggingface")], timeout=60 * 60 * 12)
+              secrets=[modal.Secret.from_name("huggingface-secret")], timeout=60 * 60 * 12)
 def predict_cortex_sam2_v2(split: str, video_id: str, question_id: str,
                             output: str = "cortex_v2_predictions.json",
                             sam2_checkpoint: str = "/data/checkpoints/sam2.1_hiera_large.pt",
@@ -882,7 +930,7 @@ def predict_cortex_sam2_v2(split: str, video_id: str, question_id: str,
                             output_step: int = 30, tracking_stride: int = 30,
                             spatial_model: str = "molmo2er",
                             grounding_strategy: str = "trigger") -> None:
-    """CORTEX v2: gemini-2.5-pro reasoning + Molmo2-ER/VideoPoint-4B grounding + SAM2.
+    """CORTEX v2: Gemini 3.7 reasoning + Molmo2-ER/VideoPoint-4B grounding + SAM2.
 
     spatial_model options:
       - "molmo2er"   : Molmo2-ER (default, ~19 GB, specialized spatial pointing)
@@ -933,19 +981,19 @@ def predict_cortex_sam2_v2(split: str, video_id: str, question_id: str,
 
 
 @app.function(image=molmo2_image, gpu="A100-80GB", volumes={DATA_ROOT: volume},
-              secrets=[modal.Secret.from_name("huggingface")], timeout=60 * 60 * 24)
+              secrets=[modal.Secret.from_name("huggingface-secret")], timeout=60 * 60 * 24)
 def batch_predict_v2(split: str = "test", output: str = "v2_submission.json",
                      start: int = 0, limit: int = 0, output_step: int = 30,
                      tracking_stride: int = 30, spatial_model: str = "molmo2er",
                      grounding_strategy: str = "trigger",
                      retry_empty: bool = True) -> None:
-    """Restartable v2 batch: CORTEX (gemini-2.5-pro) + Molmo2-ER/VP4B + SAM2.
+    """Restartable v2 batch: CORTEX (Gemini 3.7) + Molmo2-ER/VP4B + SAM2.
 
     Requires pre-cached reasoning from batch_reason_pro. Loads the spatial model
     once and reuses it across all questions to minimize cold-start overhead.
 
     Usage (full test split):
-        modal run modal_app.py::batch_reason_pro --split test
+        modal run modal_app.py::batch_reason_pro --split test --use-vertex
         modal run modal_app.py::batch_predict_v2 --split test \\
             --output v2_test_submission.json --spatial-model molmo2er
 

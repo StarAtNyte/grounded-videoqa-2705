@@ -52,7 +52,7 @@ The v2 pipeline upgrades the stack whose best reported HOTA is 0.25 (v1) toward 
 2025 winner's HOTA 0.497. See `V2_PIPELINE_EXPERIMENT.md` for full commands.
 
 **Key upgrades:**
-1. **Reasoning**: `gemini-3.6-flash` → `gemini-2.5-pro` (deeper trigger-frame reasoning)
+1. **Reasoning**: `gemini-3.6-flash` → `gemini-3.7-flash` with high thinking through Vertex AI
 2. **CORTEX prompt v2**: question-family routing, OCR alias, visibility gap semantics
 3. **Grounding**: `Molmo-7B-O-0924` → `Molmo2-ER` (pixel-accurate spatial specialist)
    or `Molmo2-VideoPoint-4B` (video-specific pointing, fine-tuned on VideoPoint data)
@@ -64,8 +64,9 @@ Quick start for v2 inference:
 modal run modal_app.py::download --split test
 modal run modal_app.py::download --split valid
 
-# 2. Re-reason test split with gemini-2.5-pro
-modal run modal_app.py::batch_reason_pro --split test --limit 1900
+# 2. Re-reason test split with Gemini 3.7 Flash through Vertex AI
+modal run modal_app.py::batch_reason_pro --split test --limit 1900 \
+  --use-vertex --model gemini-3.7-flash --thinking-level high
 
 # 3. Full test inference
 modal run modal_app.py::batch_predict_v2 --split test \
