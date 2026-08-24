@@ -20,14 +20,14 @@ until made public.
 
 | Entry | Visibility | HOTA | Public rank | Verification |
 |---|---|---:|---:|---|
-| `Zero-shot video grounding pipeline` (submitted Aug 22) | Private; can be made public | **0.25** | **1 if public** | Score and EvalAI submission row confirmed by team; exact submission ID/result precision and artifact hash not yet recorded |
+| `Zero-shot video grounding pipeline` submission `579806` (submitted Aug 22) | Private; can be made public | **0.251900** | **1 if public** | Submission identity and full-precision result verified through the authenticated EvalAI API; artifact hash is not available locally |
 | `StarAtNyte` submission `579655` | **Private** | **0.212013** | Not ranked | EvalAI result confirmed; artifact SHA-256 recorded below |
 
 **Project submissions counted: 2 confirmed private test results.** At the live
-2026-08-24 leaderboard scores, publishing the `0.25` result would place it
+2026-08-24 leaderboard scores, publishing the `0.251900` result would place it
 first, ahead of `Wind_Rain_Tower` (`0.227148`) and `ATD0709` (`0.223955`).
 
-The `0.25` submission is the established zero-shot v1 production pipeline:
+The `0.251900` submission is the established zero-shot v1 production pipeline:
 CORTEX-style Gemini video reasoning identifies the answer object and a strong
 trigger frame; Molmo spatial grounding localizes it; SAM2.1 Hiera-Large tracks
 it bidirectionally; and the serializer emits normalized boxes on the official

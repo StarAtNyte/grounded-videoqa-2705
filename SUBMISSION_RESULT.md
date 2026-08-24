@@ -1,6 +1,6 @@
 # EvalAI submission results
 
-## Best test submission — 0.25 HOTA
+## Best test submission — 0.251900 HOTA
 
 The team confirmed the following finished EvalAI test submission on 24 Aug
 2026:
@@ -10,16 +10,16 @@ The team confirmed the following finished EvalAI test submission on 24 Aug
 - Submitted at: Aug 22, 2026 2:36:22 PM (as displayed by EvalAI)
 - Status: finished
 - Execution time: `11.977851` seconds
-- HOTA: **`0.25`** (team-confirmed displayed result; additional decimal places
-  were not supplied)
+- Submission ID: `579806`
+- HOTA: **`0.2519000172615051`** (verified with the authenticated EvalAI API)
 - Visibility: private at the time of confirmation; eligible to be toggled public
 - Provisional public rank on 24 Aug: **1**
 
 The live public test leaderboard at verification time was led by
 `Wind_Rain_Tower` at `0.2271479219198227`, followed by `ATD0709` at
-`0.22395506501197815`. Therefore `0.25` becomes rank 1 when made public.
+`0.22395506501197815`. Therefore `0.2519000172615051` becomes rank 1 when made public.
 
-### What produced the 0.25 result
+### What produced the 0.251900 result
 
 This is the established zero-shot v1 production path, rather than the unfinished
 v2 experiment:
@@ -34,9 +34,9 @@ v2 experiment:
    emits the official sparse frame IDs in the organizer's JSON schema.
 
 The method is pretrained/API-based zero-shot inference. It does not train or
-prompt on validation/test labels. The exact EvalAI submission ID, submitted-file
-hash, and full-precision result should be added when exported from the result
-page; they are deliberately not inferred here.
+prompt on validation/test labels. The submitted-file hash is still unavailable
+locally; the submission ID and full-precision score above are authoritative API
+results rather than inferred values.
 
 ## Earlier private test submission
 
