@@ -780,7 +780,9 @@ def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
                      vertex_project: str = "veotest-460812",
                      vertex_location: str = "global",
                      vertex_video_fps: float = 3.0,
-                     thinking_level: str = "high") -> None:
+                     thinking_level: str = "high",
+                     quota_retries: int = 12,
+                     quota_backoff_seconds: int = 15) -> None:
     """Cache Gemini CORTEX reasoning with model/auth provenance.
 
     The SGVR@KAIST 2025 winner used Gemini 2.5 Pro for trigger-moment reasoning;
@@ -852,7 +854,8 @@ def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
         api_calls += 1
         prompt = SYSTEM_PROMPT + f"\nVideo has {n} frames at {fps:.4f} FPS.\nQuestion: {qitem['question']}"
         last_error = None; response = None
-        for attempt in range(max(3, len(clients))):
+        max_attempts = max(3, len(clients), quota_retries + 1)
+        for attempt in range(max_attempts):
             client = clients[key_index % len(clients)]
             key_index += 1
             try:
@@ -893,14 +896,26 @@ def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
                     raise RuntimeError(f"Gemini returned no text (finish_reason={finish_name})")
                 break
             except Exception as exc:
+                # Never allow a response rejected as truncated/empty to fall
+                # through to parsing and caching after the final retry.
+                response = None
                 last_error = exc
                 text = str(exc).upper()
                 quota = "429" in text or "RESOURCE_EXHAUSTED" in text or "QUOTA" in text
-                if not quota and attempt >= 2: raise
-                if attempt + 1 < max(3, len(clients)):
-                    time.sleep(2 if quota else 10 * (attempt + 1))
+                if not quota and attempt >= 2:
+                    raise
+                if attempt + 1 < max_attempts:
+                    delay = (min(300, quota_backoff_seconds * (2 ** min(attempt, 5)))
+                             if quota else 10 * (attempt + 1))
+                    print(json.dumps({"retry": attempt + 1,
+                                      "max_retries": max_attempts - 1,
+                                      "delay_seconds": delay,
+                                      "quota": quota,
+                                      "video": vid, "question": qid,
+                                      "error": str(exc)[:500]}), flush=True)
+                    time.sleep(delay)
         if response is None:
-            raise RuntimeError(f"Gemini failed after {len(clients)} key(s): {last_error}")
+            raise RuntimeError(f"Gemini failed after {max_attempts} attempt(s): {last_error}")
         parsed = parse_reasoning(response.text, n)
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps({
