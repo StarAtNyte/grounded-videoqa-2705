@@ -10,7 +10,9 @@ The completed v2 zero-shot pipeline was submitted privately on 25 Aug 2026:
 - Method description, project URL, publication URL: blank
 - Evaluation mode: `zero-shot`
 - Contact: `khanalnitij20@gmail.com`
-- Visibility: private
+- Visibility: submitted and initially verified private; later shown public by
+  the live EvalAI leaderboard on 25 Aug 2026
+- Current public rank: `4`
 - Status: finished
 - Execution time: `15.085656` seconds
 - HOTA: **`0.3676459789276123`**
@@ -36,6 +38,12 @@ The completed v2 zero-shot pipeline was submitted privately on 25 Aug 2026:
 This was pretrained/API-based zero-shot inference. No validation/test labels,
 manual test labels, training, self-supervision, or cross-question test
 correlations were used.
+
+The `0.528002` result sometimes associated with this run is **not** its test
+score. It is the HOTA for validation question Q10 in the three-question
+Q8/Q9/Q10 controlled slice. That slice's mean was `0.399873`; the only
+authoritative full-test HOTA for submission `580601` is
+`0.3676459789276123`.
 
 ## Best test submission — 0.251900 HOTA
 

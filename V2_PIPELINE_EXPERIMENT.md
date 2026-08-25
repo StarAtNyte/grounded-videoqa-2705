@@ -112,7 +112,7 @@ the test deadline.
 
 ### Full test result (25 Aug 2026)
 
-- Private EvalAI submission: `580601`
+- EvalAI submission: `580601` (submitted private; later public, rank 4)
 - HOTA: **`0.3676459789276123`**
 - Final artifact: 932 videos, 1,859 questions, 2,934 tracks, zero empty answers
 - SHA-256: `35f9526e6e577ed56d3669114edcefda1bccc55b386c8e09156b9b306cb08777`
@@ -120,6 +120,10 @@ the test deadline.
   recover the single persistent empty result at `video_8728` / question `6`
 - Tracking: SAM2.1 Hiera-Large, `output_step=30`, `tracking_stride=30`,
   `grounding_strategy=trigger`
+
+Do not report Q10's `0.528002` or the controlled mean `0.399873` as the full
+test score. The controlled slice contains only three questions from one video
+and overestimated the full-test result by `0.032227` HOTA.
 
 - Best v1 full-test HOTA: 0.25 (Aug 22 private submission, method
   `Zero-shot video grounding pipeline`)

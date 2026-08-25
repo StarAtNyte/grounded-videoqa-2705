@@ -20,13 +20,18 @@ until made public.
 
 | Entry | Visibility | HOTA | Public rank | Verification |
 |---|---|---:|---:|---|
-| `Submission` submission `580601` (submitted Aug 25) | **Private** | **0.367646** | Not ranked | Finished EvalAI result; complete artifact and SHA-256 verified locally |
-| `Zero-shot video grounding pipeline` submission `579806` (submitted Aug 22) | Private; can be made public | **0.251900** | **1 if public** | Submission identity and full-precision result verified through the authenticated EvalAI API; artifact hash is not available locally |
+| `Banana Bats` / `fusion` submission `580596` | **Public** | **0.662001** | **1** | Live EvalAI test leaderboard, split `7004` |
+| `tibo` submission `580552` | **Public** | **0.494200** | **2** | Live EvalAI test leaderboard, split `7004` |
+| `SRUKR` submission `578838` | **Public** | **0.429367** | **3** | Live EvalAI test leaderboard, split `7004` |
+| `StarAtNyte` / `Submission` submission `580601` (submitted Aug 25) | **Public** | **0.367646** | **4** | Finished EvalAI result; complete artifact and SHA-256 verified locally |
+| `Zero-shot video grounding pipeline` submission `579806` (submitted Aug 22) | Private; can be made public | **0.251900** | **5 if public at current scores** | Submission identity and full-precision result verified through the authenticated EvalAI API; artifact hash is not available locally |
 | `StarAtNyte` submission `579655` | **Private** | **0.212013** | Not ranked | EvalAI result confirmed; artifact SHA-256 recorded below |
 
-**Project submissions counted: 3 confirmed private test results.** Submission
-`580601` is intentionally private and therefore has no public rank. Its HOTA is
-`0.3676459789276123`, improving the previous project best by `0.115746` HOTA.
+**Project submissions counted: 3 confirmed test results.** Submission `580601`
+was created and initially verified private, but the authoritative EvalAI state
+on 25 Aug later showed it public at rank 4. Its HOTA is
+`0.3676459789276123`, improving the previous project best by `0.115746`, while
+trailing Banana Bats by `0.294355` HOTA. Our score is 55.53% of the leader's.
 
 Submission `580601` is the completed v2 production pipeline: Gemini 3.7 Flash
 with high thinking performs independent zero-shot video reasoning for every
@@ -56,6 +61,9 @@ When a private EvalAI submission is created, add its submission ID, score, and
 artifact SHA-256 here; keep it in the count even if it is later made public.
 See `SUBMISSION_RESULT.md` for the evidence caveat and `AGENTS.md` for upload
 rules.
+
+See `RESULTS_LEDGER_2026-08-25.md` for the consolidated submission,
+leaderboard, controlled-experiment, and competitor-method record.
 
 ## V2 Pipeline (HOTA improvement effort)
 
