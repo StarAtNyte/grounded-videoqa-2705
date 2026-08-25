@@ -13,19 +13,30 @@ Raw data, predictions, and model caches stay out of git.
 
 ## Leaderboard status
 
-_Last checked: 2026-08-24._ This table tracks the public leaderboard and all
+_Last checked: 2026-08-25._ This table tracks the public leaderboard and all
 known project submissions, including private submissions. Private entries are
 counted in **Project submissions** but do not receive a public leaderboard rank
 until made public.
 
 | Entry | Visibility | HOTA | Public rank | Verification |
 |---|---|---:|---:|---|
+| `Submission` submission `580601` (submitted Aug 25) | **Private** | **0.367646** | Not ranked | Finished EvalAI result; complete artifact and SHA-256 verified locally |
 | `Zero-shot video grounding pipeline` submission `579806` (submitted Aug 22) | Private; can be made public | **0.251900** | **1 if public** | Submission identity and full-precision result verified through the authenticated EvalAI API; artifact hash is not available locally |
 | `StarAtNyte` submission `579655` | **Private** | **0.212013** | Not ranked | EvalAI result confirmed; artifact SHA-256 recorded below |
 
-**Project submissions counted: 2 confirmed private test results.** At the live
-2026-08-24 leaderboard scores, publishing the `0.251900` result would place it
-first, ahead of `Wind_Rain_Tower` (`0.227148`) and `ATD0709` (`0.223955`).
+**Project submissions counted: 3 confirmed private test results.** Submission
+`580601` is intentionally private and therefore has no public rank. Its HOTA is
+`0.3676459789276123`, improving the previous project best by `0.115746` HOTA.
+
+Submission `580601` is the completed v2 production pipeline: Gemini 3.7 Flash
+with high thinking performs independent zero-shot video reasoning for every
+question; Molmo2-ER grounds answer objects; and SAM2.1 Hiera-Large propagates
+stable tracks at the official sparse cadence. The one question for which
+Molmo2-ER returned no track (`video_8728` question `6`) was independently
+re-grounded with Molmo2-VideoPoint-4B before the final merge. The submitted
+artifact contains 932 videos, 1,859 questions, 2,934 tracks, and zero empty
+answers. Its SHA-256 is
+`35f9526e6e577ed56d3669114edcefda1bccc55b386c8e09156b9b306cb08777`.
 
 The `0.251900` submission is the established zero-shot v1 production pipeline:
 CORTEX-style Gemini video reasoning identifies the answer object and a strong

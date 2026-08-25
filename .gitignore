@@ -5,6 +5,7 @@ archives/
 *.mp4
 *.wav
 predictions/
+artifacts/
 checkpoints/
 .cache/
 __pycache__/
