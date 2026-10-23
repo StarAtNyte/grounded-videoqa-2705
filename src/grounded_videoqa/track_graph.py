@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
-from gqa_core import DenseTrack, box_iou, fuse_boxes, gate_visibility
+from grounded_videoqa.gqa_core import DenseTrack, box_iou, fuse_boxes, gate_visibility
 
 @dataclass
 class Observation:

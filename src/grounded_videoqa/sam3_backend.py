@@ -13,7 +13,7 @@ from typing import Any, Iterable
 
 import numpy as np
 
-from gqa_core import DenseTrack, sampled_frame_ids
+from grounded_videoqa.gqa_core import DenseTrack, sampled_frame_ids
 
 
 _OUTPUT_KEYS = {

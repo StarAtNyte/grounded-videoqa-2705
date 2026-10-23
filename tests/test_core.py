@@ -1,5 +1,5 @@
-from gqa_core import sampled_frame_ids, box_iou, expand_box, DenseTrack
-from advanced_models import parse_molmo_points
+from grounded_videoqa.gqa_core import sampled_frame_ids, box_iou, expand_box, DenseTrack
+from grounded_videoqa.advanced_models import parse_molmo_points
 
 
 def test_sampled_ids_match_dataset_cadence():

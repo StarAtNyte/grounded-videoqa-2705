@@ -54,5 +54,5 @@ def validate(path: str) -> int:
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        raise SystemExit("usage: python validate.py predictions.json")
+        raise SystemExit("usage: python -m grounded_videoqa.tools.validate predictions.json")
     raise SystemExit(validate(sys.argv[1]))

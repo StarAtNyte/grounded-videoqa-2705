@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grounded-videoqa"
+version = "0.1.0"
+description = "Language-guided object grounding and video tracking with Modal."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["modal>=1.5,<2", "numpy>=1.26,<2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.urls]
+Repository = "https://github.com/StarAtNyte/grounded-videoqa-2705"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

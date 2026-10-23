@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 from typing import Iterable
-from gqa_core import DenseTrack, normalize_box, clip_box, expand_box, sampled_frame_ids
+from grounded_videoqa.gqa_core import DenseTrack, normalize_box, clip_box, expand_box, sampled_frame_ids
 
 
 def _tracker():

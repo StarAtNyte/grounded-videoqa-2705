@@ -7,8 +7,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 import numpy as np
-from gqa_core import DenseTrack, sampled_frame_ids
-from gvqa_tracking import mask_box
+from grounded_videoqa.gqa_core import DenseTrack, sampled_frame_ids
+from grounded_videoqa.gvqa_tracking import mask_box
 
 
 def _timestamp_sample_ids(video: str | Path, num_frames: int, fps: float) -> list[int]:

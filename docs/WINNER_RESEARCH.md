@@ -19,6 +19,6 @@ The highest-value next experiment is **TutuAI-style direct grounding**, kept opt
 2. Ask one VLM to return `<frame>idx</frame><bbox>x1 y1 x2 y2</bbox>` for the first object appearance.
 3. Convert the returned normalized box to the official format.
 4. Initialize two SAM2.1-Hiera-Large propagations and merge forward/backward tracks.
-5. Preserve a per-question raw response, parse diagnostics, artifact hash, local `validate.py` output, and HOTA.
+5. Preserve a per-question raw response, parse diagnostics, artifact hash, local `src/grounded_videoqa/tools/validate.py` output, and HOTA.
 
 Do not replace the current baseline or scale this route until its controlled mean exceeds `0.2062`. The 2025 winner reports are architectural guidance, not validation/test labels or executable code.

@@ -16,3 +16,16 @@ __pycache__/
 test_submission.json
 galaincha_rag/
 .env
+
+# Local environments and packaging
+.venv/
+.ruff_cache/
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+
+# Local credentials
+.env
+.env.*
+!.env.example

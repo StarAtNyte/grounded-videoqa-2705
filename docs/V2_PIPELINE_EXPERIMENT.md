@@ -18,55 +18,55 @@ Must exceed 0.2062 mean HOTA on valid Q8/Q9/Q10 before full test inference.
 
 ```bash
 # REQUIRED: Organizers updated datasets on Aug 11, 2026
-modal run modal_app.py::download --split test
-modal run modal_app.py::download --split valid
+modal run -m grounded_videoqa.jobs.modal_app::download --split test
+modal run -m grounded_videoqa.jobs.modal_app::download --split valid
 ```
 
 ### Step 2: Re-cache CORTEX reasoning with Gemini 3.7 Flash via Vertex AI
 
 ```bash
 # For controlled slice first
-modal run modal_app.py::batch_reason_pro --split valid --start 0 --limit 3 \
+modal run -m grounded_videoqa.jobs.modal_app::batch_reason_pro --split valid --start 0 --limit 3 \
   --cost-cap 3 --use-vertex --model gemini-3.7-flash --thinking-level high
 
 # Check cache
-modal run modal_app.py::inspect_cache --split valid --video-id video_10016 --question-id 8
-modal run modal_app.py::inspect_cache --split valid --video-id video_10016 --question-id 9
-modal run modal_app.py::inspect_cache --split valid --video-id video_10016 --question-id 10
+modal run -m grounded_videoqa.jobs.modal_app::inspect_cache --split valid --video-id video_10016 --question-id 8
+modal run -m grounded_videoqa.jobs.modal_app::inspect_cache --split valid --video-id video_10016 --question-id 9
+modal run -m grounded_videoqa.jobs.modal_app::inspect_cache --split valid --video-id video_10016 --question-id 10
 ```
 
 ### Step 3: Controlled slice with Molmo2-ER (default spatial model)
 
 ```bash
-modal run modal_app.py::predict_cortex_sam2_v2 --split valid --video-id video_10016 \
+modal run -m grounded_videoqa.jobs.modal_app::predict_cortex_sam2_v2 --split valid --video-id video_10016 \
     --question-id 8 --output v2_q8.json --output-step 30 --tracking-stride 30 \
     --spatial-model molmo2er
-modal run modal_app.py::evaluate_hota --split valid --output v2_q8.json --allow-partial
+modal run -m grounded_videoqa.jobs.modal_app::evaluate_hota --split valid --output v2_q8.json --allow-partial
 
-modal run modal_app.py::predict_cortex_sam2_v2 --split valid --video-id video_10016 \
+modal run -m grounded_videoqa.jobs.modal_app::predict_cortex_sam2_v2 --split valid --video-id video_10016 \
     --question-id 9 --output v2_q9.json --output-step 30 --tracking-stride 30 \
     --spatial-model molmo2er
-modal run modal_app.py::evaluate_hota --split valid --output v2_q9.json --allow-partial
+modal run -m grounded_videoqa.jobs.modal_app::evaluate_hota --split valid --output v2_q9.json --allow-partial
 
-modal run modal_app.py::predict_cortex_sam2_v2 --split valid --video-id video_10016 \
+modal run -m grounded_videoqa.jobs.modal_app::predict_cortex_sam2_v2 --split valid --video-id video_10016 \
     --question-id 10 --output v2_q10.json --output-step 30 --tracking-stride 30 \
     --spatial-model molmo2er
-modal run modal_app.py::evaluate_hota --split valid --output v2_q10.json --allow-partial
+modal run -m grounded_videoqa.jobs.modal_app::evaluate_hota --split valid --output v2_q10.json --allow-partial
 ```
 
 ### Step 4: If gate passes — full test inference
 
 ```bash
 # Re-reason the full test split with Gemini 3.7 Flash through Vertex (1,859 questions)
-modal run modal_app.py::batch_reason_pro --split test --limit 1900 --cost-cap 1900 \
+modal run -m grounded_videoqa.jobs.modal_app::batch_reason_pro --split test --limit 1900 --cost-cap 1900 \
   --use-vertex --model gemini-3.7-flash --thinking-level high
 
 # Full test inference with v2 pipeline
-modal run modal_app.py::batch_predict_v2 --split test \
+modal run -m grounded_videoqa.jobs.modal_app::batch_predict_v2 --split test \
     --output v2_test_submission.json --spatial-model molmo2er
 
 # Validate locally
-python validate.py  # or use modal endpoint
+python -m grounded_videoqa.tools.validate  # or use modal endpoint
 
 # Submit to EvalAI (private first, then public)
 # Phase 5350, Method: StarAtNyte
@@ -75,7 +75,7 @@ python validate.py  # or use modal endpoint
 ### Step 5: If v2 with molmo2er < gate, try molmo2vp4b
 
 ```bash
-modal run modal_app.py::predict_cortex_sam2_v2 --split valid --video-id video_10016 \
+modal run -m grounded_videoqa.jobs.modal_app::predict_cortex_sam2_v2 --split valid --video-id video_10016 \
     --question-id 8 --output v2_vp4b_q8.json --output-step 30 --tracking-stride 30 \
     --spatial-model molmo2vp4b
 # ... (same for Q9, Q10)

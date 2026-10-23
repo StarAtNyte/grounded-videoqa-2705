@@ -5,9 +5,9 @@ backend is a strong smoke-test baseline (DINO anchor + bidirectional CSRT),
 while the output contract is ready for SAM2/CoTracker/VLM backends.
 
 Examples:
-  modal run modal_app.py::download --split test
-  modal run modal_app.py::inspect --split valid
-  modal run modal_app.py::predict --split valid --video-id video_1580 --question-id 6
+  modal run -m grounded_videoqa.jobs.modal_app::download --split test
+  modal run -m grounded_videoqa.jobs.modal_app::inspect --split valid
+  modal run -m grounded_videoqa.jobs.modal_app::predict --split valid --video-id video_1580 --question-id 6
 """
 from __future__ import annotations
 import json, pathlib, zipfile
@@ -31,16 +31,14 @@ base_image = (
                  "torch", "torchvision", "accelerate", "bitsandbytes", "Pillow", "scipy", "einops", "pycocotools", "tabulate", "decord2", "molmo_utils", "qwen-vl-utils[decord]>=0.0.14", "transformers==4.57.1", "google-genai",
                  "git+https://github.com/facebookresearch/sam2.git", "git+https://github.com/JonathonLuiten/TrackEval.git")
 )
-_sources = ("gqa_core", "gvqa_tracking", "sam2_backend", "sam3_backend", "gvqa_reasoning",
-            "track_graph", "advanced_models", "advanced_pipeline", "local_eval", "validate")
-image = base_image.add_local_python_source(*_sources)
+image = base_image.add_local_python_source('grounded_videoqa')
 # Molmo2 uses the modern Transformers video processor; keep it on the base
 # Transformers 4.57 image rather than the legacy Molmo-7B image.
 molmo2_image = image
 # Optional winner-aligned Molmo-7B image. Its remote processor requires
 # TensorFlow and Transformers 4.50.3 plus the runtime compatibility shim.
 molmo7_image = base_image.pip_install(
-    "tensorflow-cpu==2.19.1", "transformers==4.50.3").add_local_python_source(*_sources)
+    "tensorflow-cpu==2.19.1", "transformers==4.50.3").add_local_python_source('grounded_videoqa')
 
 # SAM 3.1 currently requires a newer Python/PyTorch/CUDA stack than the
 # established SAM2 image. Keep it isolated so existing inference remains
@@ -51,7 +49,7 @@ sam3_image = (
     .apt_install("ffmpeg", "git", "libgl1", "libglib2.0-0")
     .pip_install("torch==2.10.0", "torchvision", "numpy<2", "Pillow", "opencv-python-headless",
                  "setuptools<81", "einops", "pycocotools", "psutil", "huggingface_hub", "git+https://github.com/facebookresearch/sam3.git")
-    .add_local_python_source("gqa_core", "sam3_backend")
+    .add_local_python_source('grounded_videoqa')
 )
 
 
@@ -202,7 +200,7 @@ def reason(split: str, video_id: str, question_id: str, model: str = "gemini-3.6
     import os, time
     from google import genai
     from google.genai import types
-    from gvqa_reasoning import SYSTEM_PROMPT, parse_reasoning
+    from grounded_videoqa.gvqa_reasoning import SYSTEM_PROMPT, parse_reasoning
     root = pathlib.Path(DATA_ROOT) / split; db = json.loads(_find_json(root).read_text())
     if video_id not in db: raise KeyError(f"unknown video_id: {video_id}")
     matches = [q for q in db[video_id].get("grounded_question", []) if str(q["id"]) == str(question_id)]
@@ -265,7 +263,7 @@ def batch_reason(split: str = "valid", limit: int = 50, start: int = 0,
     import os, time, cv2
     from google import genai
     from google.genai import types
-    from gvqa_reasoning import SYSTEM_PROMPT, parse_reasoning
+    from grounded_videoqa.gvqa_reasoning import SYSTEM_PROMPT, parse_reasoning
     root = pathlib.Path(DATA_ROOT) / split
     db = json.loads(_find_json(root).read_text())
     jobs = [(vid, q) for vid in sorted(db) for q in db[vid].get("grounded_question", [])]
@@ -354,8 +352,8 @@ def predict(split: str, video_id: str, question_id: str,
     Molmo/SAM2. This endpoint already emits sparse official frame IDs and
     supports stable IDs and visibility-aware track backends.
     """
-    from gqa_core import sampled_frame_ids
-    from gvqa_tracking import csrt_bidirectional
+    from grounded_videoqa.gqa_core import sampled_frame_ids
+    from grounded_videoqa.gvqa_tracking import csrt_bidirectional
     root = pathlib.Path(DATA_ROOT) / split; db = json.loads(_find_json(root).read_text())
     if video_id not in db:
         examples = list(db)[:10]
@@ -408,7 +406,7 @@ def predict(split: str, video_id: str, question_id: str,
     if backend == "sam2":
         if not sam2_checkpoint or not sam2_config:
             raise ValueError("sam2 backend requires --sam2-checkpoint and --sam2-config")
-        from sam2_backend import Sam2Bidirectional
+        from grounded_videoqa.sam2_backend import Sam2Bidirectional
         cap = cv2.VideoCapture(str(video)); width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)); height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); cap.release()
         tracker = Sam2Bidirectional(sam2_checkpoint, sam2_config)
         for tid, (trigger, box) in enumerate(proposals):
@@ -432,7 +430,7 @@ def predict_advanced(split: str, video_id: str, question_id: str,
                      sam2_checkpoint: str = "", sam2_config: str = "",
                      spatial_refine: bool = False) -> None:
     """Run TimeLens2 -> Molmo2 VideoTrack -> SAM2.1 canonical architecture."""
-    from advanced_pipeline import run_advanced
+    from grounded_videoqa.advanced_pipeline import run_advanced
     root = pathlib.Path(DATA_ROOT) / split; db = json.loads(_find_json(root).read_text())
     if video_id not in db: raise KeyError(f"unknown video_id: {video_id}")
     qs = [q for q in db[video_id].get("grounded_question", []) if str(q["id"]) == str(question_id)]
@@ -460,7 +458,7 @@ def predict_molmo2_sam2(split: str, video_id: str, question_id: str,
     documented baseline). Pass --multi-point to additionally seed SAM2 with
     every other Molmo2-reported timestamp for the same object ID.
     """
-    from advanced_pipeline import run_molmo2_sam2
+    from grounded_videoqa.advanced_pipeline import run_molmo2_sam2
     root = pathlib.Path(DATA_ROOT) / split; db = json.loads(_find_json(root).read_text())
     q = next((x for x in db[video_id].get("grounded_question", []) if str(x["id"]) == str(question_id)), None)
     if q is None: raise KeyError(f"unknown {video_id}/{question_id}")
@@ -490,7 +488,7 @@ def predict_direct_sam2(split: str, video_id: str, question_id: str,
     import os, re, time
     from google import genai
     from google.genai import types
-    from advanced_pipeline import run_direct_sam2
+    from grounded_videoqa.advanced_pipeline import run_direct_sam2
     root = pathlib.Path(DATA_ROOT) / split; db = json.loads(_find_json(root).read_text())
     q = next((x for x in db[video_id].get("grounded_question", []) if str(x["id"]) == str(question_id)), None)
     if q is None: raise KeyError(f"unknown {video_id}/{question_id}")
@@ -555,7 +553,7 @@ def predict_cortex_sam2(split: str, video_id: str, question_id: str,
                         grounding_strategy: str = "trigger",
                         proposal_grounding: bool = False) -> None:
     """Run cached CORTEX reasoning, Molmo spatial grounding, and SAM2."""
-    from advanced_pipeline import run_cortex_sam2
+    from grounded_videoqa.advanced_pipeline import run_cortex_sam2
     root = pathlib.Path(DATA_ROOT) / split
     db = json.loads(_find_json(root).read_text())
     q = next((x for x in db[video_id].get("grounded_question", []) if str(x["id"]) == str(question_id)), None)
@@ -591,10 +589,10 @@ def batch_predict_molmo2_sam2(split: str = "test", output: str = "molmo2_multipo
     pipeline (MULTIPOINT_GATING_EXPERIMENT.md). Loads Molmo2-8B once and reuses
     it across all questions. A per-question failure (e.g. Molmo2 returning no
     video points) is logged and skipped rather than aborting the whole batch;
-    validate.py does not require full question coverage.
+    src/grounded_videoqa/tools/validate.py does not require full question coverage.
     """
-    from advanced_pipeline import run_molmo2_sam2
-    from advanced_models import Molmo2VideoPoint
+    from grounded_videoqa.advanced_pipeline import run_molmo2_sam2
+    from grounded_videoqa.advanced_models import Molmo2VideoPoint
     root = pathlib.Path(DATA_ROOT) / split; db = json.loads(_find_json(root).read_text())
     jobs = [(vid, q) for vid in sorted(db) for q in db[vid].get("grounded_question", [])]
     jobs = jobs[start:start + limit] if limit else jobs[start:]
@@ -645,7 +643,7 @@ def batch_predict_cortex_sam2(split: str = "valid", output: str = "cortex_sam2_s
                               reference_mode: bool = False,
                               proposal_grounding: bool = False) -> None:
     """Restartable CORTEX/Molmo/SAM2 validation batch."""
-    from advanced_pipeline import run_cortex_sam2
+    from grounded_videoqa.advanced_pipeline import run_cortex_sam2
     root = pathlib.Path(DATA_ROOT) / split; db = json.loads(_find_json(root).read_text())
     jobs = [(vid, q) for vid in sorted(db) for q in db[vid].get("grounded_question", [])]
     jobs = jobs[start:start + limit]
@@ -705,7 +703,7 @@ def predict_sam3(split: str, video_id: str, question_id: str,
     SAM3 itself supplies exhaustive multi-instance detections and stable IDs;
     the adapter serializes its masks as the official normalized boxes.
     """
-    from sam3_backend import Sam3VideoTracker
+    from grounded_videoqa.sam3_backend import Sam3VideoTracker
     root = pathlib.Path(DATA_ROOT) / split
     db = json.loads(_find_json(root).read_text())
     if video_id not in db:
@@ -737,7 +735,7 @@ def batch_predict_sam3(split: str, output: str = "sam3_submission.json",
                        start: int = 0, limit: int = 0, output_step: int = 30,
                        retry_empty: bool = True) -> None:
     """Restartable SAM3.1 batch inference with one model per warm worker."""
-    from sam3_backend import Sam3VideoTracker
+    from grounded_videoqa.sam3_backend import Sam3VideoTracker
     root = pathlib.Path(DATA_ROOT) / split
     db = json.loads(_find_json(root).read_text())
     jobs = [(vid, q) for vid in sorted(db)
@@ -791,12 +789,12 @@ def batch_reason_pro(split: str = "test", limit: int = 1900, start: int = 0,
     stale flash-cached entries and regenerates with the Pro model.
 
     Usage:
-        modal run modal_app.py::batch_reason_pro --split test --limit 1900 --use-vertex
+        modal run -m grounded_videoqa.jobs.modal_app::batch_reason_pro --split test --limit 1900 --use-vertex
     """
     import os, time, cv2
     from google import genai
     from google.genai import types
-    from gvqa_reasoning import SYSTEM_PROMPT, parse_reasoning
+    from grounded_videoqa.gvqa_reasoning import SYSTEM_PROMPT, parse_reasoning
     root = pathlib.Path(DATA_ROOT) / split
     db = json.loads(_find_json(root).read_text())
     jobs = [(vid, q) for vid in sorted(db) for q in db[vid].get("grounded_question", [])]
@@ -954,8 +952,8 @@ def predict_cortex_sam2_v2(split: str, video_id: str, question_id: str,
 
     This is the v2 production endpoint. Use batch_predict_v2 for full split inference.
     """
-    from advanced_pipeline import run_cortex_sam2
-    from advanced_models import Molmo2ER, Molmo2VideoPoint4B, MolmoSpatial
+    from grounded_videoqa.advanced_pipeline import run_cortex_sam2
+    from grounded_videoqa.advanced_models import Molmo2ER, Molmo2VideoPoint4B, MolmoSpatial
     root = pathlib.Path(DATA_ROOT) / split
     db = json.loads(_find_json(root).read_text())
     q = next((x for x in db[video_id].get("grounded_question", [])
@@ -1008,20 +1006,20 @@ def batch_predict_v2(split: str = "test", output: str = "v2_submission.json",
     once and reuses it across all questions to minimize cold-start overhead.
 
     Usage (full test split):
-        modal run modal_app.py::batch_reason_pro --split test --use-vertex
-        modal run modal_app.py::batch_predict_v2 --split test \\
+        modal run -m grounded_videoqa.jobs.modal_app::batch_reason_pro --split test --use-vertex
+        modal run -m grounded_videoqa.jobs.modal_app::batch_predict_v2 --split test \\
             --output v2_test_submission.json --spatial-model molmo2er
 
     Usage (partial, restartable):
-        modal run modal_app.py::batch_predict_v2 --split test \\
+        modal run -m grounded_videoqa.jobs.modal_app::batch_predict_v2 --split test \\
             --output v2_test_submission.json --start 0 --limit 500
 
     spatial_model: "molmo2er" | "molmo2vp4b" | "molmo7b"
     """
     import os, gc
     import torch
-    from advanced_pipeline import run_cortex_sam2
-    from advanced_models import Molmo2ER, Molmo2VideoPoint4B, MolmoSpatial
+    from grounded_videoqa.advanced_pipeline import run_cortex_sam2
+    from grounded_videoqa.advanced_models import Molmo2ER, Molmo2VideoPoint4B, MolmoSpatial
     os.environ.setdefault("HF_HOME", "/data/hf-cache")
     os.environ.setdefault("HF_HUB_CACHE", "/data/hf-cache/hub")
     root = pathlib.Path(DATA_ROOT) / split
@@ -1096,11 +1094,11 @@ def batch_predict(split: str, output: str = "submission.json", backend: str = "s
     immediately, so Modal interruption does not discard prior work. Run train
     or valid first; use test only after freezing the configuration.
     """
-    from advanced_pipeline import run_advanced
+    from grounded_videoqa.advanced_pipeline import run_advanced
     import os
     os.environ.setdefault("HF_HOME", "/data/hf-cache")
     os.environ.setdefault("HF_HUB_CACHE", "/data/hf-cache/hub")
-    from advanced_models import TimeLens, MolmoVideoTrack
+    from grounded_videoqa.advanced_models import TimeLens, MolmoVideoTrack
     temporal_model, track_model = TimeLens(), MolmoVideoTrack()
     root = pathlib.Path(DATA_ROOT) / split; db = json.loads(_find_json(root).read_text())
     jobs = [(vid, q) for vid in sorted(db) for q in db[vid].get("grounded_question", [])]
@@ -1194,7 +1192,7 @@ def validate_submission(split: str, output: str = "submission.json", allow_parti
 def evaluate_hota(split: str = "valid", output: str = "valid_submission.json", allow_partial: bool = False) -> None:
     """Run HOTA/DetA/AssA/LocA against labels available for train/valid."""
     if split == "test": raise ValueError("test labels are not available for evaluation")
-    from local_eval import evaluate_files
+    from grounded_videoqa.tools.local_eval import evaluate_files
     root=pathlib.Path(DATA_ROOT)/split
     pred=pathlib.Path(DATA_ROOT)/"predictions"/output
     result=evaluate_files(str(pred),str(_find_json(root)), only_present=allow_partial)
@@ -1257,4 +1255,4 @@ def audit_v2_progress(split: str = "test", outputs: str = "") -> None:
 
 @app.local_entrypoint()
 def main() -> None:
-    print("Use modal run modal_app.py::download --split test")
+    print("Use modal run -m grounded_videoqa.jobs.modal_app::download --split test")

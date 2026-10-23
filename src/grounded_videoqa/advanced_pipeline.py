@@ -4,7 +4,7 @@ import cv2
 import re
 import numpy as np
 from pathlib import Path
-from gqa_core import DenseTrack, normalize_box, sampled_frame_ids
+from grounded_videoqa.gqa_core import DenseTrack, normalize_box, sampled_frame_ids
 
 
 def _video_info(video):
@@ -46,7 +46,7 @@ def run_advanced(video: str | Path, question: str, backend: str = "sam2",
     import os, cv2
     os.environ.setdefault("HF_HOME", "/data/hf-cache")
     os.environ.setdefault("HF_HUB_CACHE", "/data/hf-cache/hub")
-    from advanced_models import TimeLens, MolmoVideoTrack
+    from grounded_videoqa.advanced_models import TimeLens, MolmoVideoTrack
     n,fps,w,h=_video_info(video)
     temporal_model = temporal_model or TimeLens()
     track_model = track_model or MolmoVideoTrack()
@@ -63,7 +63,7 @@ def run_advanced(video: str | Path, question: str, backend: str = "sam2",
     # A second, spatially-specialized pass corrects the point at the selected
     # anchor. It is optional because it costs another model load.
     if spatial_refine and candidates:
-        from advanced_models import MolmoSpatial
+        from grounded_videoqa.advanced_models import MolmoSpatial
         from PIL import Image
         spatial = MolmoSpatial()
         cap=cv2.VideoCapture(str(video))
@@ -84,9 +84,9 @@ def run_advanced(video: str | Path, question: str, backend: str = "sam2",
     tracks=[]
     if backend == "sam2":
         if not sam2_checkpoint or not sam2_config: raise ValueError("SAM2 paths required")
-        from sam2_backend import Sam2Bidirectional
+        from grounded_videoqa.sam2_backend import Sam2Bidirectional
         tracker=Sam2Bidirectional(sam2_checkpoint,sam2_config)
-    from gvqa_tracking import csrt_bidirectional
+    from grounded_videoqa.gvqa_tracking import csrt_bidirectional
     for obj in candidates:
         pts=obj.get("points",[])
         pts=[p for p in pts if valid(p[0])]
@@ -129,8 +129,8 @@ def run_molmo2_sam2(video: str | Path, question: str, sam2_checkpoint: str,
     anchoring on one point alone.
     """
     import cv2
-    from advanced_models import Molmo2VideoPoint
-    from sam2_backend import Sam2Bidirectional
+    from grounded_videoqa.advanced_models import Molmo2VideoPoint
+    from grounded_videoqa.sam2_backend import Sam2Bidirectional
     n, fps, w, h = _video_info(video)
     track_model = track_model or Molmo2VideoPoint()
     raw, points = track_model.track_points(str(video), question)
@@ -183,7 +183,7 @@ def run_direct_sam2(video: str | Path, grounding: dict, sam2_checkpoint: str,
                     sam2_config: str, output_step: int = 3,
                     tracking_stride: int = 30) -> tuple[list[dict], dict]:
     """Direct VLM frame/box grounding followed by bidirectional SAM2."""
-    from sam2_backend import Sam2Bidirectional
+    from grounded_videoqa.sam2_backend import Sam2Bidirectional
     n, fps, w, h = _video_info(video)
     frame = max(0, min(n - 1, int(grounding["frame"])))
     box = tuple(float(x) for x in grounding["box"])
@@ -212,8 +212,8 @@ def run_cortex_sam2(video: str | Path, reasoning: dict, sam2_checkpoint: str,
     """CORTEX trigger -> Molmo spatial point -> full-rate SAM2 tracking."""
     import gc, cv2, torch
     from PIL import Image
-    from advanced_models import MolmoSpatial
-    from sam2_backend import Sam2Bidirectional
+    from grounded_videoqa.advanced_models import MolmoSpatial
+    from grounded_videoqa.sam2_backend import Sam2Bidirectional
     n, fps, w, h = _video_info(video)
     objects = reasoning.get("objects", [])
     if not objects: return [], {"reason": "no reasoning objects"}
